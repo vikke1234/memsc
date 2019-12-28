@@ -18,6 +18,13 @@ add_executable(memsc
   mainwindow.cpp
   mainwindow.h
   mainwindow.ui
+  ProcessMemory.cpp
+  ProcessMemory.h
+  maps.cpp
+  maps.h
+  search_functions.cpp
+  search_functions.h
 )
 
+target_compile_options(memsc PRIVATE -Wall -Wconversion)
 target_link_libraries(memsc PRIVATE Qt5::Widgets)
