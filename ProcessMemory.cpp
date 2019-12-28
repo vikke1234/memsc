@@ -7,7 +7,6 @@
 #include <sys/types.h>
 
 #include <QDebug>
-#include <iterator>
 
 #include "ProcessMemory.h"
 #include "maps.h"
@@ -62,6 +61,7 @@ ssize_t read_process_memory(pid_t pid, void *address, void *buffer, size_t n) {
 
     }
     ssize_t amount_read = process_vm_readv(pid, &local, 1, remote, amount_of_iovecs, 0);
+    delete[] remote;
     return amount_read;
 }
 /**
@@ -89,6 +89,7 @@ std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value
     if (buffer == nullptr) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
         delete matches;
+        delete[] buffer;
         return nullptr;
     }
     ssize_t n = read_process_memory(g_pid, start, buffer, length);
@@ -100,9 +101,9 @@ std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value
         return nullptr;
     }
 
-    for(int i = 0; i < n; i++) {
+    for(unsigned long i = 0; (unsigned long) i < n; i++) {
         if(buffer[i] == value) {
-            matches->insert(start + (unsigned long)i * sizeof(T));
+            matches->insert(start + i * sizeof(T));
         }
     }
 
@@ -110,20 +111,23 @@ std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value
     return matches;
 }
 
-
-/* this will probably have to return some sort of unordered_set or something for it to compare older results with */
+/* I shouldn't write to previous matches, instead return a new one and then compare in search_functions */
 /**
  * @brief ProcessMemory::scan scans the memory for a certain value
  * @param previous_matches if equal to nullptr it will allocate a new one and return that
  * @param value
  * @return returns the matches it finds
  */
-std::unordered_set<void *> *ProcessMemory::scan(std:: unordered_set<void *> *previous_matches,  int value) {
+std::unordered_set<void *> *ProcessMemory::scan(std::unordered_set<void *> *previous_matches,  int value) {
+    if (previous_matches == nullptr) {
+        return nullptr;
+    }
     address_range *list = get_memory_ranges(g_pid);
     address_range *current = list;
-    if (previous_matches == nullptr) {
-        previous_matches = new std::unordered_set<void *>;
+    if(list == nullptr) {
+        return nullptr;
     }
+    std::unordered_set<void *> *matches = new std::unordered_set<void *>;
     /*
      * eliminate previous matches, check what the pointer in previous_matches points to and make sure it points to `value`
      * and that it's in current matches
@@ -134,10 +138,10 @@ std::unordered_set<void *> *ProcessMemory::scan(std:: unordered_set<void *> *pre
     while(current != nullptr) {
         if (!(current->perms & PERM_EXECUTE)) { /* look for data sections */
             fprintf(stderr, "Scanning %s: %p - %p\n", current->name, current->start, (char*)current->start+current->length);
-            std::unordered_set<void *> *matches = scan_range<int>((char*) current->start, current->length, value);
-            if(matches != nullptr) {
-                previous_matches->insert(matches->begin(), matches->end());
-                delete matches;
+            std::unordered_set<void *> *current_matches = scan_range<int>((char*) current->start, current->length, value);
+            if(current_matches != nullptr) {
+                matches->insert(current_matches->begin(), current_matches->end());
+                delete current_matches;
             }
         }
 
@@ -145,5 +149,5 @@ std::unordered_set<void *> *ProcessMemory::scan(std:: unordered_set<void *> *pre
     }
     fprintf(stderr, "matches: %lu\n", previous_matches->size());
     free_address_range(list);
-    return previous_matches;
+    return matches;
 }
