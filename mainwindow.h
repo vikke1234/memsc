@@ -2,20 +2,40 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QMenuBar>
+#include <QMenu>
+#include <QRegExpValidator>
+
+#include "search_functions.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
-class MainWindow : public QMainWindow
+class MainWindow : public QWidget
 {
     Q_OBJECT
 
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+signals:
+
+public slots:
+    void handle_next_scan(void);
+    void handle_new_scan(void);
+    void change_validator(int index);
 
 private:
+    QMenuBar    *menubar;
+    QMenu       *filemenu;
+    QRegExpValidator *pos_only = new QRegExpValidator(QRegExp("\\d*"));
+    QRegExpValidator *pos_neg = new QRegExpValidator(QRegExp("[+-]?\\d*"));
+
+    search_functions *search = nullptr;
+
     Ui::MainWindow *ui;
+    void create_menu();
+
 };
 #endif // MAINWINDOW_H
