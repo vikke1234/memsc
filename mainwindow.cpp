@@ -28,9 +28,11 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
-    delete this->pos_only;
-    delete this->pos_neg;
-    delete this->search;
+    delete pos_only;
+    delete pos_neg;
+    delete search;
+    delete filemenu;
+    delete menubar;
 }
 
 void MainWindow::create_menu(void) {
