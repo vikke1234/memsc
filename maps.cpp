@@ -81,6 +81,7 @@ struct address_range *get_memory_ranges(pid_t pid) {
         list = current;
         list_len++;
     }
+    fclose(f);
     return list;
 }
 

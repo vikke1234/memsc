@@ -1,10 +1,6 @@
 #ifndef MAPS_H
 #define MAPS_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include <stdlib.h>
 #include <linux/limits.h>
 
@@ -31,7 +27,4 @@ struct address_range *get_memory_ranges(pid_t pid);
 void free_address_range(address_range *list);
 size_t get_address_range_list_size(address_range *list);
 
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
 #endif /* MAPS_H */
