@@ -14,7 +14,7 @@ struct address_range *get_memory_ranges(pid_t pid) {
     FILE *f = NULL;
     f =  fopen(filename, "r");
     if(f == NULL) {
-        fprintf(stderr, "Error get_memory_ranges: %s\n", strerror(errno));
+        fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
         return NULL;
     }
     char *line = NULL;
