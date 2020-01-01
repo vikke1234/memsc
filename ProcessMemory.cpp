@@ -11,7 +11,7 @@
 #include "ProcessMemory.h"
 #include "maps.h"
 
-static pid_t g_pid = 50482;
+static pid_t g_pid = 165379;
 
 void ProcessMemory::attach(pid_t pid) {
        g_pid = pid;
@@ -62,6 +62,27 @@ ssize_t read_process_memory(pid_t pid, void *address, void *buffer, size_t n) {
     }
     ssize_t amount_read = process_vm_readv(pid, &local, 1, remote, amount_of_iovecs, 0);
     delete[] remote;
+    return amount_read;
+}
+
+/**
+ * @brief write_process_memory Writes to the memory of a given process
+ * @param pid                  Program pid
+ * @param address              The base memory address
+ * @param buffer               Buffer to write
+ * @param n                    How many bytes to write
+ * @return                     Returns bytes written
+ */
+ssize_t ProcessMemory::write_process_memory(pid_t pid, void *address, void *buffer, ssize_t n) {
+    iovec local, remote;
+    /* this might have to be made so that if n > _SC_PAGESIZE
+     * local would be split into multiple locals, similar to how
+     * read_process_memory works, no fucking clue though if it's necessary */
+    remote.iov_base = address;
+    remote.iov_len = n;
+    local.iov_base = buffer;
+    local.iov_len = n;
+    ssize_t amount_read = process_vm_writev(pid, &local, 1, &remote, 1, 0);
     return amount_read;
 }
 /**
