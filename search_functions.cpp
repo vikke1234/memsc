@@ -1,5 +1,4 @@
 #include "search_functions.h"
-#include <ProcessMemory.h>
 #include <chrono>
 #include <QDebug>
 
@@ -14,15 +13,12 @@ search_functions::~search_functions() {
 
 void search_functions::scan_for(uint32_t value) {
     std::unordered_set<void *> *results = ProcessMemory::scan(this->matches, value);
-    auto start = std::chrono::high_resolution_clock::now();
-    if(this->matches->empty()) {
+    if(this->matches->empty() && results != nullptr) {
         this->matches->insert(results->begin(), results->end());
     }
     std::unordered_set<void *> *intersection = compare_results(this->matches, results);
     this->matches->clear();
     this->matches->insert(intersection->begin(), intersection->end());
-    auto finish = std::chrono::high_resolution_clock::now();
-    qDebug() << "time: " << (finish - start).count();
 }
 
 /**
@@ -36,6 +32,9 @@ std::unordered_set<void *> *search_functions::get_matches() const
 }
 
 std::unordered_set<void *> *search_functions::compare_results(std::unordered_set<void *> *previous, std::unordered_set<void *> *current) {
+    if(current->empty()) {
+        return previous;
+    }
     std::unordered_set<void *> *intersection = new std::unordered_set<void *>;
     for (auto it = previous->begin(); it != previous->end(); it++) {
         if(current->find(*it) != current->end()) {
@@ -43,6 +42,14 @@ std::unordered_set<void *> *search_functions::compare_results(std::unordered_set
         }
     }
     return intersection;
+}
+bool search_functions::write(void *address, void *value, ssize_t size) {
+    ssize_t n = ProcessMemory::write_process_memory(pid, address, &value, size);
+    if (n != size) {
+        fprintf(stderr, "Error writing to process: %s", strerror(errno));
+        return false;
+    }
+    return true;
 }
 
 void search_functions::clear_results(void) {

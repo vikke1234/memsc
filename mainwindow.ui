@@ -156,67 +156,6 @@
            </item>
            <item>
             <layout class="QGridLayout" name="settings_layout">
-             <item row="1" column="0">
-              <widget class="QLabel" name="scan_type_label">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>Scan Type</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QComboBox" name="scan_type">
-               <item>
-                <property name="text">
-                 <string>Exact Value</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Bigger than...</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Smaller than...</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Value between...</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Unknown initial value</string>
-                </property>
-               </item>
-              </widget>
-             </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="value_type_label">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="text">
-                <string>Value Type</string>
-               </property>
-              </widget>
-             </item>
              <item row="2" column="1">
               <widget class="QComboBox" name="value_type">
                <property name="currentIndex">
@@ -265,6 +204,67 @@
                <item>
                 <property name="text">
                  <string>Array of byte</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="scan_type_label">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>Scan Type</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="value_type_label">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="text">
+                <string>Value Type</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QComboBox" name="scan_type">
+               <item>
+                <property name="text">
+                 <string>Exact Value</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Bigger than...</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Smaller than...</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Value between...</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Unknown initial value</string>
                 </property>
                </item>
               </widget>
@@ -364,7 +364,33 @@
       </layout>
      </item>
      <item>
-      <widget class="QTableWidget" name="saved_addresses"/>
+      <widget class="QTableWidget" name="saved_addresses">
+       <column>
+        <property name="text">
+         <string>Active</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Description</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Address</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Type</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Value</string>
+        </property>
+       </column>
+      </widget>
      </item>
     </layout>
    </item>
