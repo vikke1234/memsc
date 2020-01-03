@@ -44,7 +44,7 @@ std::unordered_set<void *> *search_functions::compare_results(std::unordered_set
     return intersection;
 }
 bool search_functions::write(void *address, void *value, ssize_t size) {
-    ssize_t n = ProcessMemory::write_process_memory(pid, address, &value, size);
+    ssize_t n = ProcessMemory::write_process_memory(pid, address, value, size);
     if (n != size) {
         fprintf(stderr, "Error writing to process: %s", strerror(errno));
         return false;

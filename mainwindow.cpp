@@ -158,7 +158,7 @@ void MainWindow::handle_double_click_saved(int row,int column) {
         QString str_addr = ui->saved_addresses->item(row, 2)->text();
         void *address = nullptr;
         sscanf(str_addr.toStdString().c_str(), "%p", &address);
-        search->write(address, value, sizeof(value));
+        search->write(address, &value, sizeof(value));
         break;
     }
 }
