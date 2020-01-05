@@ -10,6 +10,15 @@
 
 #include <thread>
 
+/*
+ * PLAN:
+ * 1. create a function to automatically update the value in the variables
+ * 2. create ability to freeze a memory range(value in memory more likely)
+ * 3. create more types to read
+ * 4. create more types to write
+ * 5. add pointer dereferencing
+ * 6. a better ui for pointers, like cheat engine
+ * */
 MainWindow::MainWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::MainWindow)
