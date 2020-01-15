@@ -10,7 +10,8 @@
 namespace ProcessMemory {
     //std::unordered_set<void *> *scan_range(char *start, unsigned long length, int32_t value);
     /* TODO make this into a template so you can look for any type */
-    std::unordered_set<void *> *scan(std::unordered_set<void *> *previous_matches, int value);
+    std::unordered_set<void *> *scan(pid_t pid, std::unordered_set<void *> *previous_matches, int value);
+    ssize_t read_process_memory(pid_t pid, void *address, void *buffer, size_t n);
     ssize_t write_process_memory(pid_t pid, void *address, void *buffer, ssize_t n);
     void attach(pid_t pid);
 }

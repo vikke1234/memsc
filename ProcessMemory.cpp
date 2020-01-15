@@ -11,12 +11,6 @@
 #include "ProcessMemory.h"
 #include "maps.h"
 
-static pid_t g_pid = 165379;
-
-void ProcessMemory::attach(pid_t pid) {
-       g_pid = pid;
-}
-
 /**
  * @brief read_process_memory reads `n` amount of bytes from a process
  * @param address starting address
@@ -24,7 +18,7 @@ void ProcessMemory::attach(pid_t pid) {
  * @param n amount to read
  * @return bytes read
  */
-ssize_t read_process_memory(pid_t pid, void *address, void *buffer, size_t n) {
+ssize_t ProcessMemory::read_process_memory(pid_t pid, void *address, void *buffer, size_t n) {
     static const size_t page_size = (size_t) sysconf(_SC_PAGESIZE);
 
     unsigned long amount_of_iovecs = 1;
@@ -93,7 +87,7 @@ ssize_t ProcessMemory::write_process_memory(pid_t pid, void *address, void *buff
  * @return
  */
 template <typename T>
-std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value) {
+std::unordered_set<void*> *scan_range(pid_t pid, char *start, unsigned long length, T value) {
     std::unordered_set<void *> *matches = new std::unordered_set<void*>;
     if (matches == nullptr) {
         fprintf(stderr, "Error could not allocate set for matches: %s\n", strerror(errno));
@@ -113,7 +107,7 @@ std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value
         delete[] buffer;
         return nullptr;
     }
-    ssize_t n = read_process_memory(g_pid, start, buffer, length);
+    ssize_t n = ProcessMemory::read_process_memory(pid, start, buffer, length);
     if(n == -1) {
         fprintf(stderr, "Error: %s, %p - %p\n", strerror(errno), (void *)start, (void *)(start + length));
 
@@ -139,11 +133,11 @@ std::unordered_set<void*> *scan_range(char *start, unsigned long length, T value
  * @param value
  * @return returns the matches it finds
  */
-std::unordered_set<void *> *ProcessMemory::scan(std::unordered_set<void *> *previous_matches,  int value) {
+std::unordered_set<void *> *ProcessMemory::scan(pid_t pid, std::unordered_set<void *> *previous_matches,  int value) {
     if (previous_matches == nullptr) {
         return nullptr;
     }
-    address_range *list = get_memory_ranges(g_pid);
+    address_range *list = get_memory_ranges(pid);
     address_range *current = list;
     if(list == nullptr) {
         return nullptr;
@@ -159,7 +153,7 @@ std::unordered_set<void *> *ProcessMemory::scan(std::unordered_set<void *> *prev
     while(current != nullptr) {
         if (!(current->perms & PERM_EXECUTE)) { /* look for data sections */
             fprintf(stderr, "Scanning %s: %p - %p\n", current->name, current->start, (char*)current->start+current->length);
-            std::unordered_set<void *> *current_matches = scan_range<int>((char*) current->start, current->length, value);
+            std::unordered_set<void *> *current_matches = scan_range<int>(pid, (char*) current->start, current->length, value);
             if(current_matches != nullptr) {
                 matches->insert(current_matches->begin(), current_matches->end());
                 delete current_matches;
