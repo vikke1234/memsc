@@ -8,7 +8,7 @@
 
 class search_functions {
 private:
-    pid_t pid = 165379;
+    pid_t pid = 3471;
     std::unordered_set<void *> *matches = nullptr;
 
     std::unordered_set<void *> *compare_results(std::unordered_set<void *> *previous, std::unordered_set<void *> *current);
@@ -23,6 +23,7 @@ public:
     bool write(void *address, void *value, ssize_t size);
 
     std::unordered_set<void *> *get_matches() const;
+    pid_t get_pid() const;
 };
 
 #endif // SEARCH_FUNCTIONS_H

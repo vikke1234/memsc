@@ -12,7 +12,7 @@ search_functions::~search_functions() {
 }
 
 void search_functions::scan_for(uint32_t value) {
-    std::unordered_set<void *> *results = ProcessMemory::scan(this->matches, value);
+    std::unordered_set<void *> *results = ProcessMemory::scan(this->pid, this->matches, value);
     if(this->matches->empty() && results != nullptr) {
         this->matches->insert(results->begin(), results->end());
     }
@@ -29,6 +29,11 @@ void search_functions::scan_for(uint32_t value) {
 std::unordered_set<void *> *search_functions::get_matches() const
 {
     return matches;
+}
+
+pid_t search_functions::get_pid() const
+{
+    return pid;
 }
 
 std::unordered_set<void *> *search_functions::compare_results(std::unordered_set<void *> *previous, std::unordered_set<void *> *current) {
