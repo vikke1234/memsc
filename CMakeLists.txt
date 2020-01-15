@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
+find_package(Threads)
 
 add_executable(memsc
   main.cpp
@@ -24,7 +25,9 @@ add_executable(memsc
   maps.h
   search_functions.cpp
   search_functions.h
+  updater.cpp
+  updater.h
 )
 
 target_compile_options(memsc PRIVATE -Wall -Wconversion)
-target_link_libraries(memsc PRIVATE Qt5::Widgets)
+target_link_libraries(memsc PRIVATE Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
