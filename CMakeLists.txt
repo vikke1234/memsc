@@ -27,6 +27,8 @@ add_executable(memsc
   search_functions.h
   updater.cpp
   updater.h
+  memorywidget.cpp
+  memorywidget.h
 )
 
 target_compile_options(memsc PRIVATE -Wall -Wconversion)
