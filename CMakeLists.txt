@@ -25,10 +25,7 @@ add_executable(memsc
   maps.h
   search_functions.cpp
   search_functions.h
-
-  memorywidget.cpp
-  memorywidget.h
-)
+  )
 
 target_compile_options(memsc PRIVATE -Wall -Wconversion)
 target_link_libraries(memsc PRIVATE Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
