@@ -74,9 +74,10 @@ void MainWindow::create_connections(void) {
  * @brief parse_cstr places the value correctly from the table into dest, cuts off necessary bits
  * @param dest
  * @param src
+ * @param size
  * @param type
  */
-void parse_cstr(void *dest, const char *src, int type) {
+void parse_cstr(void *dest, const char *src, size_t size, int type) {
     if(dest == nullptr || src == nullptr) {
         return;
     }
@@ -106,7 +107,7 @@ void parse_cstr(void *dest, const char *src, int type) {
     case 3: /* uint32 */
     case 4: /* uint64 */
         num = atoll(src) & max_values[type];
-        memcpy(dest, &num, sizes[type]);
+        memcpy(dest, &num, size);
         break;
     default:
         break;
@@ -160,7 +161,7 @@ void MainWindow::save_row(int row, int column) {
             entry->size=size;
             if(size != -1) {
                 entry->value = new char[size];
-                parse_cstr((void *)entry->value, value.toStdString().c_str(), type);
+                parse_cstr((void *)entry->value, value.toStdString().c_str(), entry->size, type);
                 ui->saved_addresses->setItem(current_rows, 4, value_cell); /* value */
 
             } else {
