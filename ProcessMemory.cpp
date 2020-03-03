@@ -102,7 +102,7 @@ std::unordered_set<void*> *scan_range(pid_t pid, char *start, unsigned long leng
     T *buffer = nullptr;
     buffer =  new T[length];
     if (buffer == nullptr) {
-        fprintf(stderr, "Error: %s\n", strerror(errno));
+        perror("scan_range");
         delete matches;
         delete[] buffer;
         return nullptr;
@@ -149,10 +149,10 @@ std::unordered_set<void *> *ProcessMemory::scan(pid_t pid, std::unordered_set<vo
      * TODO:
      * figure out how to quickly check the memory addresses that are in previous matches, the fastest way can't be to use process_vm_readv
      * */
-    fprintf(stderr, "Scanning for: %d\n", value);
+    fprintf(stdout, "Scanning for: %d\n", value);
     while(current != nullptr) {
         if (!(current->perms & PERM_EXECUTE)) { /* look for data sections */
-            fprintf(stderr, "Scanning %s: %p - %p\n", current->name, current->start, (char*)current->start+current->length);
+            fprintf(stdout, "Scanning %s: %p - %p\n", current->name, current->start, (char*)current->start+current->length);
             std::unordered_set<void *> *current_matches = scan_range<int>(pid, (char*) current->start, current->length, value);
             if(current_matches != nullptr) {
                 matches->insert(current_matches->begin(), current_matches->end());
@@ -162,7 +162,7 @@ std::unordered_set<void *> *ProcessMemory::scan(pid_t pid, std::unordered_set<vo
 
         current = current->next;
     }
-    fprintf(stderr, "matches: %lu\n", previous_matches->size());
+    fprintf(stdout, "matches: %lu\n", previous_matches->size());
     free_address_range(list);
     return matches;
 }

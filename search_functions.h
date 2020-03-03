@@ -8,7 +8,9 @@
 
 class search_functions {
 private:
-    pid_t pid = 3471;
+    pid_t pid = 60924;
+    /* this might be made into a unordered_map you can keep track of the values in them, <void *, std::variant<...>
+     * similar to how it's done in the mainwindow.cpp currently, but probably will never happen, dunno */
     std::unordered_set<void *> *matches = nullptr;
 
     std::unordered_set<void *> *compare_results(std::unordered_set<void *> *previous, std::unordered_set<void *> *current);
