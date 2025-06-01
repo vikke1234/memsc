@@ -12,6 +12,7 @@
 #include <thread>
 
 
+#include "ProcessMemory.h"
 #include "search_functions.h"
 
 struct address_t {
@@ -58,9 +59,11 @@ private:
     std::unordered_map<void *, struct address_t*> saved_address_values;
     std::thread saved_address_scanner;
     Ui::MainWindow *ui;
+
     void create_menu(void);
     void create_connections(void);
     void saved_address_thread();
+    void show_pid_window();
 
     enum saved_address_cells {
         SAVED_ADDRESS_CHECKBOX = 0,

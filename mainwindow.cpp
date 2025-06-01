@@ -9,6 +9,7 @@
 #include <QInputDialog>
 #include <QScrollBar>
 #include <QKeyEvent>
+#include <QListWidget>
 #include <iostream>
 
 #include <assert.h>
@@ -40,7 +41,80 @@ MainWindow::MainWindow(QWidget *parent)
     MainWindow::create_connections();
     ui->search_bar->setValidator(this->pos_only);
     ui->saved_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    connect(ui->attachButton, &QPushButton::clicked, this,
+                              &MainWindow::show_pid_window);
     QtConcurrent::run(this, &MainWindow::saved_address_thread);
+}
+
+void MainWindow::show_pid_window() {
+    QDir procDir("/proc");
+    QStringList entries = procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    QList<QPair<int, QString>> pidInfoList;
+    int maxPidDigits = 0;
+
+    for (const QString &entry : entries) {
+        bool ok = false;
+        int pid = entry.toInt(&ok);
+        if (!ok) continue;
+
+        QString commPath = QString("/proc/%1/comm").arg(pid);
+        QFile commFile(commPath);
+        QString procName = "<unknown>";
+
+        if (commFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&commFile);
+            procName = in.readLine().trimmed();
+            commFile.close();
+        }
+
+        pidInfoList.append(qMakePair(pid, procName));
+
+        int pidDigits = QString::number(pid).length();
+        if (pidDigits > maxPidDigits) {
+            maxPidDigits = pidDigits;
+        }
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Select a PID"));
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+
+    QLineEdit *searchEdit = new QLineEdit(&dialog);
+    searchEdit->setPlaceholderText(tr("Search..."));
+    layout->addWidget(searchEdit);
+
+    QListWidget *listWidget = new QListWidget(&dialog);
+    for (const auto &pidInfo : pidInfoList) {
+        int pid = pidInfo.first;
+        const QString &name = pidInfo.second;
+
+        // Left-align PID in a field of width maxPidDigits, then a separator, then left-align name
+        QString itemText = QString("%1 : %2")
+                               .arg(pid, -maxPidDigits)  // negative width for left alignment
+                               .arg(name);
+
+        QListWidgetItem *item = new QListWidgetItem(itemText, listWidget);
+        item->setData(Qt::UserRole, pid);
+    }
+    layout->addWidget(listWidget);
+
+    // Filter items based on search text
+    connect(searchEdit, &QLineEdit::textChanged, [listWidget](const QString &text) {
+        for (int i = 0; i < listWidget->count(); ++i) {
+            QListWidgetItem *item = listWidget->item(i);
+            bool match = item->text().contains(text, Qt::CaseInsensitive);
+            item->setHidden(!match);
+        }
+    });
+
+    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
+            [this](QListWidgetItem *item){
+                int pid = item->data(Qt::UserRole).toInt();
+                QString displayText = item->text();
+                qDebug() << "User clicked PID:" << pid << "(" << displayText << ")";
+            });
+
+    dialog.exec();
 }
 
 MainWindow::~MainWindow() {
