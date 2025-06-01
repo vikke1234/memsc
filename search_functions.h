@@ -5,6 +5,7 @@
 #include <ProcessMemory.h>
 #include <stdio.h>
 #include <string.h>
+#include <cstdint>
 
 class search_functions {
 private:
