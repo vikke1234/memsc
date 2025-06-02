@@ -14,13 +14,46 @@ enum file_perms {
 };
 
 struct address_range {
+    /** Pointer to the next address range */
     std::unique_ptr<address_range>  next;
+
+    /** Start of memory range */
     void                            *start;
+
+    /** Length (in bytes) of the memory range */
     size_t                          length;
+
+    /** Permissions set on the range */
     unsigned char                   perms;
+
+    /**
+     * If the region was mapped from a file,
+     * it's the offset where the file begins,
+     * otherwise 0
+     */
     size_t                          offset;
+
+    /**
+     * If the region was mapped from a file,
+     * this is the major and minor device
+     * number where the file lives
+     */
     dev_t                           device;
+
+    /**
+     * If the region was mapped from a file, this is the file number
+     */
     ino_t                           inode;
+
+    /**
+     * If the region was mapped from a file,
+     * this is the name of the file. This
+     * field is blank for anonymous mapped regions.
+     * There are also special regions with names
+     * like [heap], [stack], or [vdso]. [vdso]
+     * stands for virtual dynamic shared object.
+     * It's used by system calls to switch to kernel mode.
+     */
     char                            name[PATH_MAX];
 };
 

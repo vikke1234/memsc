@@ -54,13 +54,13 @@ private:
     QRegExpValidator *pos_neg = new QRegExpValidator(QRegExp("[+-]?\\d*"), this);
 
     bool quit = false;
-    std::unordered_map<void *, struct address_t*> saved_address_values;
+    std::unordered_map<void *, address_t*> saved_address_values;
     std::thread saved_address_scanner;
     ProcessMemory scanner;
     Ui::MainWindow *ui;
 
-    void create_menu(void);
-    void create_connections(void);
+    void create_menu();
+    void create_connections();
     void saved_address_thread();
     void show_pid_window();
 
