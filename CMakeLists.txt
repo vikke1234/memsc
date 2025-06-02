@@ -17,15 +17,17 @@ find_package(Threads)
 add_executable(memsc
   main.cpp
   mainwindow.cpp
-  mainwindow.h
   mainwindow.ui
   ProcessMemory.cpp
-  ProcessMemory.h
   maps.cpp
-  maps.h
-  search_functions.cpp
-  search_functions.h
   )
 
-target_compile_options(memsc PRIVATE -Wall -Wconversion)
+target_compile_options(memsc PRIVATE
+        -Wall
+        -Wconversion
+)
+target_link_options(memsc PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>
+        $<$<CONFIG:Release>:-flto=auto>
+)
 target_link_libraries(memsc PRIVATE Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
