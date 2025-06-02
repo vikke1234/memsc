@@ -7,46 +7,43 @@
 
 #include "maps.h"
 
-struct address_range *get_memory_ranges(pid_t pid) {
-    address_range *list = nullptr;
-    char filename[64];
+#include <cstdint>
+#include <memory>
+
+std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
+    auto list = std::make_unique<address_range>();
+
+    char filename[256];
     sprintf(filename, "/proc/%d/maps", pid);
-    FILE *f = NULL;
+    FILE *f = nullptr;
     f =  fopen(filename, "r");
-    if(f == NULL) {
+    if(f == nullptr) {
         fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
-        return NULL;
+        return nullptr;
     }
-    char *line = NULL;
+    char *line = nullptr;
     size_t n;
 
     size_t list_len = 0;
-
+    address_range *current = list.get();
     while (getline(&line, &n, f) > 0) {
-        address_range *current = nullptr;
-        unsigned long start, end, offset;
+        uintptr_t start, end, offset;
         unsigned int dev_major, dev_minor;
         char    perms[8];
         ino_t   inode;
         int name_start = 0, name_end = 0;
 
-        if(sscanf(line, "%lx-%lx %4s %lx %u:%u %lu %n%*[^\n]%n",
+        if(sscanf(line, "%lx-%lx %4s %lx %x:%x %lu %n%*[^\n]%n",
                &start, &end, perms, &offset, &dev_major, &dev_minor,
                &inode, &name_start, &name_end) < 7) {
-            fclose(f);
-            free(line);
-
-            return NULL;
+            break;
         }
         if (name_end <= name_start) {
             name_end = name_start = 0;
         }
 
-        current = (address_range*)malloc(sizeof(address_range));
-        if(current == NULL) {
-            fclose(f);
-            free(line);
-            return NULL;
+        if(current == nullptr) {
+            break;
         }
 
         dev_t device = makedev(dev_major, dev_minor);
@@ -76,32 +73,21 @@ struct address_range *get_memory_ranges(pid_t pid) {
         if(strchr(perms, 'x')) {
             current->perms |= PERM_SHARED;
         }
+        current->next = std::make_unique<address_range>();
+        current = current->next.get();
 
-        current->next = list;
-        list = current;
         list_len++;
     }
+    free(line);
     fclose(f);
     return list;
-}
-
-void free_address_range(address_range *list) {
-    while (list != nullptr) {
-        address_range *curr = list;
-        list = list->next;
-        curr->next = nullptr;
-        curr->length = 0;
-        curr->perms = 0;
-        curr->name[0] = '\0';
-        delete curr;
-    }
 }
 
 size_t get_address_range_list_size(address_range *list) {
     size_t n = 0;
     address_range *current = list;
-    while(current != NULL) {
-        current = current->next;
+    while(current != nullptr) {
+        current = current->next.get();
         n++;
     }
     return n;

@@ -108,10 +108,13 @@ void MainWindow::show_pid_window() {
     });
 
     connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
-            [this](QListWidgetItem *item){
+            [this, &dialog](QListWidgetItem *item){
                 int pid = item->data(Qt::UserRole).toInt();
                 QString displayText = item->text();
                 qDebug() << "User clicked PID:" << pid << "(" << displayText << ")";
+                scanner.pid(pid);
+                setWindowTitle("MemSC - " + displayText);
+                dialog.close();
             });
 
     dialog.exec();
@@ -121,27 +124,25 @@ MainWindow::~MainWindow() {
     this->quit = true;
 }
 
-void MainWindow::create_menu(void) {
+void MainWindow::create_menu() {
     menubar = new QMenuBar(this);
     filemenu = new QMenu("File", this);
-    QAction *open = new QAction("Open", filemenu);
-    filemenu->addAction(open);
     menubar->addMenu(filemenu);
     this->layout()->setMenuBar(menubar);
 }
 
-void MainWindow::create_connections(void) {
-    QObject::connect(ui->memory_addresses, &QTableWidget::cellDoubleClicked,
+void MainWindow::create_connections() {
+    connect(ui->memory_addresses, &QTableWidget::cellDoubleClicked,
                      this, &MainWindow::save_row);
-    QObject::connect(MainWindow::ui->value_type,
+    connect(ui->value_type,
                      QOverload<int>::of(&QComboBox::currentIndexChanged),
                      this, &MainWindow::change_validator);
-    QObject::connect(MainWindow::ui->new_scan, &QPushButton::pressed,
+    connect(ui->new_scan, &QPushButton::pressed,
                      this, &MainWindow::handle_new_scan);
-    QObject::connect(MainWindow::ui->next_scan, &QPushButton::pressed,
+    connect(ui->next_scan, &QPushButton::pressed,
                      this, &MainWindow::handle_next_scan);
-    QObject::connect(ui->saved_addresses, &QTableWidget::cellDoubleClicked, this, &MainWindow::handle_double_click_saved);
-    QObject::connect(this, &MainWindow::value_changed, this, &MainWindow::saved_address_change);
+    connect(ui->saved_addresses, &QTableWidget::cellDoubleClicked, this, &MainWindow::handle_double_click_saved);
+    connect(this, &MainWindow::value_changed, this, &MainWindow::saved_address_change);
 }
 
 /**
@@ -231,7 +232,7 @@ void MainWindow::save_row(int row, int column) {
         void *_address = nullptr;
         sscanf(address.toStdString().c_str(), "%p", &_address);
         if(saved_address_values.find(_address) == saved_address_values.end()) {
-            struct address_t *entry = new struct address_t;
+            address_t *entry = new address_t;
             entry->size=size;
             if(size != -1) {
                 entry->value = new char[size];
@@ -254,18 +255,18 @@ void MainWindow::change_validator(int index) {
 
     switch (index) {
         case 0: /* Int */
-            MainWindow::ui->search_bar->setValidator(pos_only);
+            ui->search_bar->setValidator(pos_only);
             break;
         default:
-            MainWindow::ui->search_bar->setValidator(nullptr);
+            ui->search_bar->setValidator(nullptr);
     }
 }
 
 void MainWindow::handle_new_scan() {
+    scanner.get_matches().clear();
     if(ui->next_scan->isEnabled()) {
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
-        search->get_matches()->clear();
         ui->next_scan->setEnabled(false);
     } else {
         if(ui->search_bar->text().isEmpty()) {
@@ -289,7 +290,7 @@ void MainWindow::handle_next_scan() {
     case 2: /* 2 Bytes */
         break;
     case 3: /* 4 Bytes */
-        search->scan_for((uint32_t) MainWindow::ui->search_bar->text().toInt());
+        scanner.scan<std::uint32_t>(ui->search_bar->text().toInt());
         break;
     case 4: /* 8 Bytes */
         break;
@@ -305,18 +306,20 @@ void MainWindow::handle_next_scan() {
         /* should never get here... */
         return;
     }
+
+    std::unordered_set<void *> &matches = scanner.get_matches();
     /* start thread here somewhere to monitor the values later if they change?
      * it's probably very cpu expensive though */
-    ui->memory_addresses->setRowCount((int) search->get_matches()->size());
+    ui->memory_addresses->setRowCount(static_cast<int>(matches.size()));
     char found[32] = {0};
-    snprintf(found, 32, "Found: %ld", search->get_matches()->size());
+    snprintf(found, 32, "Found: %ld", matches.size());
     ui->amount_found->setText(found);
     int row = 0;
     char str_address[64] = {0};
 
     /* loop to add the found addresses to the non saved memory address table */
-    for(auto it = search->get_matches()->begin(); it != search->get_matches()->end();it++) {
-        snprintf(str_address, 64, "%p", *it);
+    for(const auto match : matches) {
+        snprintf(str_address, 64, "%p", match);
 
         ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
         ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
@@ -339,7 +342,7 @@ void MainWindow::handle_double_click_saved(int row,int column) {
         QString str_addr = ui->saved_addresses->item(row, 2)->text();
         void *address = nullptr;
         sscanf(str_addr.toStdString().c_str(), "%p", &address);
-        search->write(address, &value, sizeof(value));
+        // TODO: scanner.write(address, &value, sizeof(value));
         break;
     }
 }
@@ -381,7 +384,8 @@ void MainWindow::saved_address_thread() {
                 continue;
             }
 
-            ssize_t amount_read = ProcessMemory::read_process_memory(this->search->get_pid(), address, buffer, segment->size);
+            ssize_t amount_read = scanner.read_process_memory(address, buffer,
+                                                              segment->size);
 
             bool changed = false; /* makes the text red in the value box if the value has changed */
             printf("reading: %p\n", address);

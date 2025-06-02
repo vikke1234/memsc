@@ -13,7 +13,6 @@
 
 
 #include "ProcessMemory.h"
-#include "search_functions.h"
 
 struct address_t {
     /* fuck this shit, the ui can get to decide what the data is currently..
@@ -34,14 +33,14 @@ class MainWindow : public QWidget
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 signals:
     void value_changed(address_t *segment, int row);
 
 public slots:
-    void handle_next_scan(void);
-    void handle_new_scan(void);
+    void handle_next_scan();
+    void handle_new_scan();
     void change_validator(int index);
     void save_row(int row, int column);
     void handle_double_click_saved(int row, int column);
@@ -55,9 +54,9 @@ private:
     QRegExpValidator *pos_neg = new QRegExpValidator(QRegExp("[+-]?\\d*"), this);
 
     bool quit = false;
-    search_functions *search = new search_functions;
     std::unordered_map<void *, struct address_t*> saved_address_values;
     std::thread saved_address_scanner;
+    ProcessMemory scanner;
     Ui::MainWindow *ui;
 
     void create_menu(void);

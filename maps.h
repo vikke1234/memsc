@@ -1,6 +1,7 @@
 #ifndef MAPS_H
 #define MAPS_H
 
+#include <memory>
 #include <stdlib.h>
 #include <linux/limits.h>
 
@@ -13,18 +14,17 @@ enum file_perms {
 };
 
 struct address_range {
-    struct address_range    *next;
-    void                    *start;
-    size_t                  length;
-    unsigned char           perms;
-    size_t                  offset;
-    dev_t                   device;
-    ino_t                   inode;
-    char                    name[PATH_MAX];
+    std::unique_ptr<address_range>  next;
+    void                            *start;
+    size_t                          length;
+    unsigned char                   perms;
+    size_t                          offset;
+    dev_t                           device;
+    ino_t                           inode;
+    char                            name[PATH_MAX];
 };
 
-struct address_range *get_memory_ranges(pid_t pid);
-void free_address_range(address_range *list);
+std::unique_ptr<address_range> get_memory_ranges(pid_t pid);
 size_t get_address_range_list_size(address_range *list);
 
 #endif /* MAPS_H */
