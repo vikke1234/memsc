@@ -2,8 +2,10 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
+#include <variant>
 #include <memory>
 #include <unordered_set>
+#include <set>
 #include <sys/mman.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -13,16 +15,20 @@
 
 #include "maps.h"
 
+
+using Match = std::variant<std::uint8_t*, std::uint16_t*, std::uint32_t*, std::int32_t*>;
+using MatchSet = std::set<Match>;
+
 /*
  * maybe make this into a class? you could place the pid into
  * it which would be nice so you don't have a global variable
  */
 class ProcessMemory {
     pid_t _pid{};
-    std::unordered_set<void *> matches;
+    MatchSet matches;
 
 public:
-    std::unordered_set<void *> &get_matches() {
+    MatchSet &get_matches() {
         return matches;
     }
 
@@ -42,11 +48,10 @@ public:
      * @return
      */
     template <typename T>
-    std::unordered_set<void*> scan_range(char *start, const unsigned long length, T value) {
-        // We limit each read to at most 4096 MiB (1 << 32 bytes) per chunk.
+    MatchSet scan_range(char *start, const unsigned long length, T value) {
         constexpr std::size_t max_chunk_bytes = 4096;
 
-        std::unordered_set<void*> found;
+        MatchSet found;
 
         // Number of bytes remaining to scan
         unsigned long bytes_remaining = length;
@@ -54,7 +59,6 @@ public:
         unsigned long offset = 0;
 
         while (bytes_remaining > 0) {
-            // Determine how many bytes we'll read in this chunk
             auto chunk_bytes = static_cast<std::size_t>(std::min<unsigned long>(bytes_remaining, max_chunk_bytes));
 
             // Compute how many T‐elements fit in this chunk.
@@ -73,10 +77,8 @@ public:
                 chunk_bytes = chunk_elems * sizeof(T);
             }
 
-            // Allocate a local buffer to hold chunk_elems elements of type T
             std::unique_ptr<T[]> buffer = std::make_unique<T[]>(chunk_elems);
 
-            // Attempt to read from the remote process:
             ssize_t nread = read_process_memory(start + offset, buffer.get(), chunk_bytes);
             if (nread < 0) {
                 std::fprintf(
@@ -85,23 +87,19 @@ public:
                     static_cast<void*>(start + offset),
                     std::strerror(errno)
                 );
-                // In case of an error, stop scanning and return what we have so far.
                 return found;
             }
 
-            // Number of complete T‐elements that we actually read:
             std::size_t elems_read = static_cast<std::size_t>(nread) / sizeof(T);
 
-            // Scan the local buffer for matches
             for (std::size_t i = 0; i < elems_read; ++i) {
                 if (buffer[i] == value) {
                     // The address of this match in the remote process:
                     void* match_addr = start + offset + i * sizeof(T);
-                    found.insert(match_addr);
+                    found.insert(Match(std::bit_cast<T*>(match_addr)));
                 }
             }
 
-            // Advance our window
             offset += chunk_bytes;
             bytes_remaining -= std::min<unsigned long>(bytes_remaining, static_cast<unsigned long>(chunk_bytes));
         }
@@ -113,33 +111,70 @@ public:
      * @return returns the matches it finds
      */
     template<typename T>
-    std::unordered_set<void *> &scan(T value) {
+    MatchSet &scan(T value) {
 
         std::unique_ptr<address_range> list = get_memory_ranges(_pid);
         address_range *current = list.get();
 
-        std::unordered_set<void *> found;
+        MatchSet found;
         /*
          * eliminate previous matches, check what the pointer in previous_matches points to and make sure it points to `value`
          * and that it's in current matches
          * TODO:
          * figure out how to quickly check the memory addresses that are in previous matches, the fastest way can't be to use process_vm_readv
          * */
-        while(current != nullptr) {
-            if (!(current->perms & PERM_EXECUTE)) { /* look for data sections */
-                fprintf(stdout, "Scanning %s: %p - %p (size: %zx)\n", current->name, current->start,
-                        (char *) current->start + current->length, current->length);
-                std::unordered_set<void *> current_matches = scan_range<int>(static_cast<char *>(current->start), current->length, value);
+        using Clock = std::chrono::high_resolution_clock;
+
+        auto overall_t0 = Clock::now();
+
+        while (current != nullptr) {
+            if (!(current->perms & PERM_EXECUTE) && current->perms & PERM_READ) {
+                fprintf(stdout,
+                        "Scanning %s: %p - %p (size: %zx)\n",
+                        current->name,
+                        current->start,
+                        static_cast<char*>(current->start) + current->length,
+                        current->length);
+
+                const size_t region_bytes = current->length;
+                const size_t num_addresses = region_bytes / sizeof(T);
+
+                auto t0 = Clock::now();
+                MatchSet current_matches =
+                    scan_range<T>(static_cast<char*>(current->start) + current->offset,
+                                  current->length,
+                                  value);
+                auto t1 = Clock::now();
+
+                std::chrono::duration<double> elapsed = t1 - t0;
+                double seconds = elapsed.count();
+
+                double rate = 0.0;
+                if (seconds > 0.0) {
+                    rate = static_cast<double>(num_addresses) / seconds;
+                }
+
+                fprintf(stdout,
+                        "    → Scanned %zu addresses in %.3f s (%.0f addresses/s)\n",
+                        num_addresses,
+                        seconds,
+                        rate);
+
                 found.insert(current_matches.begin(), current_matches.end());
             }
 
             current = current->next.get();
         }
+
         if (!matches.empty()) {
             std::erase_if(matches, [&](auto const &x) { return found.find(x) == found.end(); });
         } else {
-            matches.insert(found.begin(), found.end());
+            matches = found;
         }
+        auto overall_t1 = Clock::now();
+        std::chrono::duration<double> total_elapsed = overall_t1 - overall_t0;
+        double total_seconds = total_elapsed.count();
+        fprintf(stdout, "Total scan time: %.3f s\n", total_seconds);
         fprintf(stdout, "matches: %lu\n", matches.size());
         return matches;
     }

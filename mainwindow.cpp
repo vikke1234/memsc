@@ -263,8 +263,8 @@ void MainWindow::change_validator(int index) {
 }
 
 void MainWindow::handle_new_scan() {
-    scanner.get_matches().clear();
     if(ui->next_scan->isEnabled()) {
+        scanner.get_matches().clear();
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
         ui->next_scan->setEnabled(false);
@@ -307,7 +307,7 @@ void MainWindow::handle_next_scan() {
         return;
     }
 
-    std::unordered_set<void *> &matches = scanner.get_matches();
+    MatchSet &matches = scanner.get_matches();
     /* start thread here somewhere to monitor the values later if they change?
      * it's probably very cpu expensive though */
     ui->memory_addresses->setRowCount(static_cast<int>(matches.size()));
@@ -315,15 +315,27 @@ void MainWindow::handle_next_scan() {
     snprintf(found, 32, "Found: %ld", matches.size());
     ui->amount_found->setText(found);
     int row = 0;
-    char str_address[64] = {0};
 
+    constexpr int max_rows = 10000;
     /* loop to add the found addresses to the non saved memory address table */
-    for(const auto match : matches) {
-        snprintf(str_address, 64, "%p", match);
+    for(const auto &match : matches) {
+        char str_address[64] = {};
 
-        ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
-        ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
+        std::visit([&](auto *ptr) {
+            snprintf(str_address, 64, "%p", ptr);
+            ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
+            if (ptr != nullptr) {
+                std::remove_pointer_t<decltype(ptr)> val{};
+                size_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
+                assert(n == sizeof(val));
+                ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
+            }
+        }, match);
+
         row++;
+        if (row >= max_rows) {
+            break;
+        }
     }
 }
 

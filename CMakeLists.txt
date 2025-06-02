@@ -25,6 +25,7 @@ add_executable(memsc
 target_compile_options(memsc PRIVATE
         -Wall
         -Wconversion
+        -march=native
 )
 target_link_options(memsc PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address>
