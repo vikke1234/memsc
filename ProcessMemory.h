@@ -1,6 +1,7 @@
 #pragma once
 #include <cerrno>
 #include <cstring>
+#include <algorithm>
 #include <memory>
 #include <unordered_set>
 #include <sys/mman.h>
@@ -134,7 +135,11 @@ public:
 
             current = current->next.get();
         }
-        matches.merge(found);
+        if (!matches.empty()) {
+            std::erase_if(matches, [&](auto const &x) { return found.find(x) == found.end(); });
+        } else {
+            matches.insert(found.begin(), found.end());
+        }
         fprintf(stdout, "matches: %lu\n", matches.size());
         return matches;
     }
