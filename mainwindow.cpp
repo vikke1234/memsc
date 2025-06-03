@@ -126,6 +126,7 @@ void MainWindow::show_pid_window() {
                 dialog.close();
                 toggleLayoutItems(ui->memorySearchLayout, true);
                 ui->next_scan->setEnabled(false);
+                ui->search_bar->setFocus();
             });
 
     QShortcut *enterShortcut = new QShortcut(QKeySequence(Qt::Key_Return), &dialog);
@@ -141,6 +142,7 @@ void MainWindow::show_pid_window() {
                 dialog.close();
                 toggleLayoutItems(ui->memorySearchLayout, true);
                 ui->next_scan->setEnabled(false);
+                ui->search_bar->setFocus();
                 break;
             }
         }
@@ -361,7 +363,7 @@ void MainWindow::handle_next_scan() {
             ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
             if (ptr != nullptr) {
                 std::remove_pointer_t<decltype(ptr)> val{};
-                ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
+                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
                 assert(n == sizeof(val));
                 ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
             }
