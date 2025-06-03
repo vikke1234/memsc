@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 
 project(memsc LANGUAGES CXX)
 
@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
-find_package(Threads)
+find_package(Threads REQUIRED)
 
 add_executable(memsc
   main.cpp
@@ -20,15 +20,17 @@ add_executable(memsc
   mainwindow.ui
   ProcessMemory.cpp
   maps.cpp
-  )
+)
 
 target_compile_options(memsc PRIVATE
         -Wall
         -Wconversion
         -march=native
 )
+
 target_link_options(memsc PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address>
         $<$<CONFIG:Release>:-flto=auto>
 )
-target_link_libraries(memsc PRIVATE Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
+
+target_link_libraries(memsc PRIVATE Threads::Threads Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
