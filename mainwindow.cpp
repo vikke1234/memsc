@@ -15,7 +15,6 @@
 #include <assert.h>
 #include <unistd.h>
 #include <limits.h>
-#include <float.h>
 
 /*
  * PLAN:
@@ -320,16 +319,16 @@ void MainWindow::handle_next_scan() {
         return;
     }
 
+    constexpr int max_rows = 10000;
     MatchSet &matches = scanner.get_matches();
     /* start thread here somewhere to monitor the values later if they change?
      * it's probably very cpu expensive though */
-    ui->memory_addresses->setRowCount(static_cast<int>(matches.size()));
+    ui->memory_addresses->setRowCount(std::min(static_cast<int>(matches.size()), max_rows));
     char found[32] = {0};
     snprintf(found, 32, "Found: %ld", matches.size());
     ui->amount_found->setText(found);
     int row = 0;
 
-    constexpr int max_rows = 10000;
     /* loop to add the found addresses to the non saved memory address table */
     for(const auto &match : matches) {
         char str_address[64] = {};
@@ -339,7 +338,7 @@ void MainWindow::handle_next_scan() {
             ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
             if (ptr != nullptr) {
                 std::remove_pointer_t<decltype(ptr)> val{};
-                size_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
+                ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
                 assert(n == sizeof(val));
                 ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
             }
@@ -404,10 +403,6 @@ void MainWindow::saved_address_thread() {
             }
             struct address_t *segment = this->saved_address_values[address];
             uint8_t *buffer = new uint8_t[segment->size];
-            if(buffer == nullptr) {
-                perror("saved_address_thread");
-                continue;
-            }
 
             ssize_t amount_read = scanner.read_process_memory(address, buffer,
                                                               segment->size);
