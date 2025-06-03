@@ -172,6 +172,12 @@ void MainWindow::create_connections() {
                      this, &MainWindow::handle_next_scan);
     connect(ui->saved_addresses, &QTableWidget::cellDoubleClicked, this, &MainWindow::handle_double_click_saved);
     connect(this, &MainWindow::value_changed, this, &MainWindow::saved_address_change);
+    connect(ui->search_bar, &QLineEdit::returnPressed, this, [this]() {
+    if (ui->next_scan->isEnabled())
+        handle_next_scan();
+    else
+        handle_new_scan();
+});
 }
 
 /**
