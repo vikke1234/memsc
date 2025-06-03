@@ -16,6 +16,17 @@
 #include <unistd.h>
 #include <limits.h>
 
+static void toggleLayoutItems(QLayout *layout, bool enable) {
+    for (int i = 0; i < layout->count(); ++i) {
+        QLayoutItem *item = layout->itemAt(i);
+        if (QWidget *widget = item->widget()) {
+            widget->setEnabled(enable);
+        } else if (QLayout *childLayout = item->layout()) {
+            toggleLayoutItems(childLayout, enable);
+        }
+    }
+}
+
 /*
  * PLAN:
  * 1. create a function to automatically update the value in the variables DONE!!
@@ -43,7 +54,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->attachButton, &QPushButton::clicked, this,
                               &MainWindow::show_pid_window);
     QtConcurrent::run(this, &MainWindow::saved_address_thread);
+    toggleLayoutItems(ui->memorySearchLayout, false);
 }
+
 
 void MainWindow::show_pid_window() {
     QDir procDir("/proc");
@@ -111,6 +124,8 @@ void MainWindow::show_pid_window() {
                 scanner.pid(pid);
                 setWindowTitle("MemSC - " + displayText);
                 dialog.close();
+                toggleLayoutItems(ui->memorySearchLayout, true);
+                ui->next_scan->setEnabled(false);
             });
 
     QShortcut *enterShortcut = new QShortcut(QKeySequence(Qt::Key_Return), &dialog);
@@ -124,6 +139,8 @@ void MainWindow::show_pid_window() {
                 scanner.pid(pid);
                 setWindowTitle("MemSC - " + displayText);
                 dialog.close();
+                toggleLayoutItems(ui->memorySearchLayout, true);
+                ui->next_scan->setEnabled(false);
                 break;
             }
         }
