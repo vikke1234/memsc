@@ -3,7 +3,7 @@
 #include "maps.h"
 
 #include <QtDebug>
-#include <QMainWindow>
+#include <QShortcut>
 #include <QComboBox>
 #include <QTableWidgetItem>
 #include <QInputDialog>
@@ -87,10 +87,8 @@ void MainWindow::show_pid_window() {
     for (const auto &pidInfo : pidInfoList) {
         int pid = pidInfo.first;
         const QString &name = pidInfo.second;
-
-        // Left-align PID in a field of width maxPidDigits, then a separator, then left-align name
         QString itemText = QString("%1 : %2")
-                               .arg(pid, -maxPidDigits)  // negative width for left alignment
+                               .arg(pid, -maxPidDigits)
                                .arg(name);
 
         QListWidgetItem *item = new QListWidgetItem(itemText, listWidget);
@@ -98,7 +96,6 @@ void MainWindow::show_pid_window() {
     }
     layout->addWidget(listWidget);
 
-    // Filter items based on search text
     connect(searchEdit, &QLineEdit::textChanged, [listWidget](const QString &text) {
         for (int i = 0; i < listWidget->count(); ++i) {
             QListWidgetItem *item = listWidget->item(i);
@@ -116,6 +113,22 @@ void MainWindow::show_pid_window() {
                 setWindowTitle("MemSC - " + displayText);
                 dialog.close();
             });
+
+    QShortcut *enterShortcut = new QShortcut(QKeySequence(Qt::Key_Return), &dialog);
+    connect(enterShortcut, &QShortcut::activated, [this, listWidget, &dialog]() {
+        for (int i = 0; i < listWidget->count(); ++i) {
+            QListWidgetItem *item = listWidget->item(i);
+            if (!item->isHidden()) {
+                int pid = item->data(Qt::UserRole).toInt();
+                QString displayText = item->text();
+                qDebug() << "User pressed Enter, selected PID:" << pid << "(" << displayText << ")";
+                scanner.pid(pid);
+                setWindowTitle("MemSC - " + displayText);
+                dialog.close();
+                break;
+            }
+        }
+    });
 
     dialog.exec();
 }
