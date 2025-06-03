@@ -7,7 +7,6 @@
 #include <QDebug>
 
 #include "ProcessMemory.h"
-#include "maps.h"
 
 
     /**
@@ -19,47 +18,39 @@
      */
     ssize_t ProcessMemory::read_process_memory(void *address, void *buffer, size_t n) const {
         const size_t page_size = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-
-        unsigned long amount_of_iovecs = 1;
-        if (page_size < n) {
-            amount_of_iovecs = n / page_size;
-            auto max_iov = static_cast<unsigned long>(sysconf(_SC_IOV_MAX));
-            if(amount_of_iovecs > max_iov) {
-                fprintf(stderr, "ProcessMemory: Error could not read process memory, too much to read %lu > %lu\n", amount_of_iovecs, max_iov);
-                return 0;
-            }
+        size_t num_vecs = (n + page_size - 1) / page_size;
+        auto max_iov = static_cast<unsigned long>(sysconf(_SC_IOV_MAX));
+        if (num_vecs > max_iov) {
+            fprintf(stderr, "ProcessMemory: Error could not read process memory, too many iovecs %zu > %lu\n",
+                    num_vecs, max_iov);
+            return 0;
         }
 
-        iovec *remote = new iovec[amount_of_iovecs];
-        iovec local{.iov_base = buffer, .iov_len = n};
-        /* bytes remaining after filled all of the remotes except last */
-        size_t remeinder_of_bytes = n % page_size;
-        unsigned long i = 0;
-
-        if(n > page_size) {
-            do {
-                remote[i].iov_base = static_cast<char *>(address) + (i * page_size);
-                remote[i].iov_len = page_size;
-                n -= page_size;
-            } while (i++ < amount_of_iovecs - 1);
-
-            if (remeinder_of_bytes > 0 && amount_of_iovecs > 1) {
-                remote[i].iov_base = static_cast<char *>(address) + (i * page_size);
-                remote[i].iov_len = n;
-            }
-        } else {
-            remote[i].iov_len = n;
-            remote[i].iov_base = address;
-
+        std::unique_ptr<iovec[]> remote = std::make_unique<iovec[]>(num_vecs);
+        size_t remaining = n;
+        size_t offset = 0;
+        for (size_t i = 0; i < num_vecs; ++i) {
+            size_t chunk = remaining < page_size ? remaining : page_size;
+            remote[i].iov_base = static_cast<char *>(address) + offset;
+            remote[i].iov_len  = chunk;
+            offset    += chunk;
+            remaining -= chunk;
         }
-        const ssize_t amount_read = process_vm_readv(_pid, &local, 1, remote, amount_of_iovecs, 0);
+
+        iovec local { .iov_base = buffer, .iov_len = n };
+        ssize_t amount_read = process_vm_readv(_pid, &local, 1,
+            remote.get(), num_vecs, 0);
+
         if (amount_read == -1) {
-            perror("ProcessMemory: process_vm_readv error");
+            char error[512] = {};
+            snprintf(error, sizeof(error),
+                     "ProcessMemory: process_vm_readv error %p - %p",
+                     address, static_cast<char *>(address) + n);
+            perror(error);
         }
-        delete[] remote;
+
         return amount_read;
     }
-
     /**
      * @brief write_process_memory Writes to the memory of a given process
      * @param pid                  Program pid
