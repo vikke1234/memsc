@@ -55,6 +55,7 @@ MainWindow::MainWindow(QWidget *parent)
                               &MainWindow::show_pid_window);
     QtConcurrent::run(this, &MainWindow::saved_address_thread);
     toggleLayoutItems(ui->memorySearchLayout, false);
+    ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
 }
 
 
@@ -127,6 +128,10 @@ void MainWindow::show_pid_window() {
                 toggleLayoutItems(ui->memorySearchLayout, true);
                 ui->next_scan->setEnabled(false);
                 ui->search_bar->setFocus();
+                ui->memory_addresses->clearContents();
+                ui->memory_addresses->setRowCount(0);
+                ui->saved_addresses->clearContents();
+                ui->saved_addresses->setRowCount(0);
             });
 
     QShortcut *enterShortcut = new QShortcut(QKeySequence(Qt::Key_Return), &dialog);
@@ -143,6 +148,10 @@ void MainWindow::show_pid_window() {
                 toggleLayoutItems(ui->memorySearchLayout, true);
                 ui->next_scan->setEnabled(false);
                 ui->search_bar->setFocus();
+                ui->memory_addresses->clearContents();
+                ui->memory_addresses->setRowCount(0);
+                ui->saved_addresses->clearContents();
+                ui->saved_addresses->setRowCount(0);
                 break;
             }
         }
@@ -202,13 +211,6 @@ void parse_cstr(void *dest, const char *src, size_t size, int type) {
         UINT16_MAX,
         UINT32_MAX,
         UINT64_MAX,
-    };
-    size_t sizes[] = {
-        0,
-        sizeof(uint8_t),
-        sizeof(uint16_t),
-        sizeof(uint32_t),
-        sizeof(uint64_t)
     };
 
     switch(type) {
@@ -305,11 +307,13 @@ void MainWindow::handle_new_scan() {
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
         ui->next_scan->setEnabled(false);
+        ui->value_type->setEnabled(true);
     } else {
         if(ui->search_bar->text().isEmpty()) {
             return;
         }
         ui->next_scan->setEnabled(true);
+        ui->value_type->setEnabled(false);
         handle_next_scan();
     }
 }
@@ -345,10 +349,11 @@ void MainWindow::handle_next_scan() {
     }
 
     constexpr int max_rows = 10000;
-    MatchSet &matches = scanner.get_matches();
+    auto &matches = scanner.get_matches();
     /* start thread here somewhere to monitor the values later if they change?
      * it's probably very cpu expensive though */
-    ui->memory_addresses->setRowCount(std::min(static_cast<int>(matches.size()), max_rows));
+    ui->memory_addresses->clearContents();
+    ui->memory_addresses->setRowCount(0);
     char found[32] = {0};
     snprintf(found, 32, "Found: %ld", matches.size());
     ui->amount_found->setText(found);
@@ -359,17 +364,21 @@ void MainWindow::handle_next_scan() {
         char str_address[64] = {};
 
         std::visit([&](auto *ptr) {
-            snprintf(str_address, 64, "%p", ptr);
-            ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
-            if (ptr != nullptr) {
-                std::remove_pointer_t<decltype(ptr)> val{};
-                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
-                assert(n == sizeof(val));
-                ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
+            if (ptr == nullptr) {
+                return;
             }
+
+            snprintf(str_address, 64, "%p", ptr);
+            std::remove_pointer_t<decltype(ptr)> val{};
+            [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
+            assert(n == sizeof(val));
+            ui->memory_addresses->insertRow(row);
+            ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
+            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
+            row++;
+
         }, match);
 
-        row++;
         if (row >= max_rows) {
             break;
         }
@@ -387,7 +396,7 @@ void MainWindow::handle_double_click_saved(int row,int column) {
     case 3: /* change type */
         break;
     case 4: /* change value */
-        uint32_t value =(uint32_t) QInputDialog::getInt(this, tr("QInputDialog::getInt()"), tr("Set Value"));
+        //uint32_t value =(uint32_t) QInputDialog::getInt(this, tr("QInputDialog::getInt()"), tr("Set Value"));
         QString str_addr = ui->saved_addresses->item(row, 2)->text();
         void *address = nullptr;
         sscanf(str_addr.toStdString().c_str(), "%p", &address);
