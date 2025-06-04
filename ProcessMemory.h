@@ -51,20 +51,21 @@ public:
      * @return
      */
     template <typename T>
-    MatchSet scan_range(address_range &range, T value) {
+    std::vector<T*> scan_range(const address_range &range, const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
         const std::size_t max_size = IOV_MAX * sysconf(_SC_PAGESIZE);
         const std::size_t increments = max_size / sizeof(T);
 
-        MatchSet found;
+        std::vector<T*> found;
 
-        std::unique_ptr<T[]> buf{std::make_unique<T[]>(increments)};
+        std::unique_ptr<T[]> buf(new  (std::align_val_t(64)) T[increments]);
+        char *end = static_cast<char *>(range.start) + range.length;
 
         for (char  *start = static_cast<char *>(range.start);
-                    start < static_cast<char *>(range.start) + range.length;
+                    start < end;
                     start += increments) {
-            std::uintptr_t ptrdiff = (static_cast<char*>(range.start) + range.length) - start;
-            std::size_t size = std::min(increments, ptrdiff);
+            std::uintptr_t ptrdiff = end - start;
+            std::size_t size = std::min(max_size, ptrdiff);
 
             ssize_t nread = read_process_memory(start, buf.get(), size);
             if (nread < 0 && nread == size) {
@@ -77,10 +78,10 @@ public:
                 return found;
             }
 
-            for (int i = 0, j = 0; i < increments && (start + i) < (range.start + range.length); i += sizeof(T), j++) {
-                if (buf[j] == value) {
+            for (int i = 0; i < size / sizeof(T); i++) {
+                if (buf[i] == value) {
                     assert(start + i < (range.start + range.length));
-                    found.insert(std::bit_cast<T*>(start + i));
+                    found.push_back(reinterpret_cast<T*>(start + i * sizeof(T)));
                 }
             }
         }
@@ -123,7 +124,7 @@ public:
                 const size_t num_addresses = region_bytes / sizeof(T);
 
                 auto t0 = Clock::now();
-                MatchSet current_matches = scan_range<T>(*current, value);
+                auto current_matches = scan_range<T>(*current, value);
                 found.insert(current_matches.begin(), current_matches.end());
 
                 auto t1 = Clock::now();
