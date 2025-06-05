@@ -29,6 +29,43 @@ static void toggleLayoutItems(QLayout *layout, bool enable) {
     }
 }
 
+/**
+ * @brief parse_cstr places the value correctly from the table into dest, cuts off necessary bits
+ * @param dest
+ * @param src
+ * @param size
+ * @param type
+ */
+static void parse_cstr(void *dest, const char *src, size_t size, int type) {
+    if(dest == nullptr || src == nullptr) {
+        return;
+    }
+    /* it's simply the largest possible; so that everything will fit */
+    uint64_t num = 0;
+    /* to reduce code repetitions */
+    size_t max_values[] = {
+        0,
+        UINT8_MAX,
+        UINT16_MAX,
+        UINT32_MAX,
+        UINT64_MAX,
+    };
+
+    switch(type) {
+        case 0: /* binary */
+            break;
+        case 1: /* uint8 */
+        case 2: /* uint16 */
+        case 3: /* uint32 */
+        case 4: /* uint64 */
+            num = atoll(src) & max_values[type];
+            memcpy(dest, &num, size);
+            break;
+        default:
+            break;
+    }
+}
+
 /*
  * PLAN:
  * 1. create a function to automatically update the value in the variables DONE!!
@@ -58,6 +95,8 @@ MainWindow::MainWindow(QWidget *parent)
     QtConcurrent::run(this, &MainWindow::saved_address_thread);
     toggleLayoutItems(ui->memorySearchLayout, false);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    ui->memory_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    ui->saved_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
 }
 
 
@@ -195,42 +234,6 @@ void MainWindow::create_connections() {
 }
 
 /**
- * @brief parse_cstr places the value correctly from the table into dest, cuts off necessary bits
- * @param dest
- * @param src
- * @param size
- * @param type
- */
-void parse_cstr(void *dest, const char *src, size_t size, int type) {
-    if(dest == nullptr || src == nullptr) {
-        return;
-    }
-    /* it's simply the largest possible; so that everything will fit */
-    uint64_t num = 0;
-    /* to reduce code repetitions */
-    size_t max_values[] = {
-        0,
-        UINT8_MAX,
-        UINT16_MAX,
-        UINT32_MAX,
-        UINT64_MAX,
-    };
-
-    switch(type) {
-    case 0: /* binary */
-        break;
-    case 1: /* uint8 */
-    case 2: /* uint16 */
-    case 3: /* uint32 */
-    case 4: /* uint64 */
-        num = atoll(src) & max_values[type];
-        memcpy(dest, &num, size);
-        break;
-    default:
-        break;
-    }
-}
-/**
  * @brief MainWindow::save_row saves the row to saved_addresses, memory monitoring is currently only
  * supported for the "basic" types
  * @param row
@@ -250,7 +253,7 @@ void MainWindow::save_row(int row, int column) {
         -1,
         -1
     };
-    QString address = ui->memory_addresses->item(row, 0)->text();
+    QTableWidgetItem *address = ui->memory_addresses->item(row, 0)->clone();
     QString value = ui->memory_addresses->item(row, 2)->text();
     int type = ui->value_type->currentIndex();
 
@@ -260,7 +263,7 @@ void MainWindow::save_row(int row, int column) {
     checkbox->setCheckState(Qt::Unchecked);
     ui->saved_addresses->setItem(current_rows, 0, checkbox); /* checkbox */
     /*description inserted automatically; when saving is added will probably be included here as well or something */
-    ui->saved_addresses->setItem(current_rows, 2, new QTableWidgetItem(address)); /* address */
+    ui->saved_addresses->setItem(current_rows, 2, address); /* address */
     QComboBox *type_combobox = new QComboBox(this);
     type_combobox->addItems({"Binary", "Byte", "2 Bytes", "4 Bytes", "8 Bytes", "Float", "Double", "String", "Array of Bytes"});
     type_combobox->setCurrentIndex(type);
@@ -272,7 +275,7 @@ void MainWindow::save_row(int row, int column) {
     ssize_t size = size_array[type];
     if (size > 0) {
         void *_address = nullptr;
-        sscanf(address.toStdString().c_str(), "%p", &_address);
+        sscanf(address->text().toStdString().c_str(), "%p", &_address);
         if(saved_address_values.find(_address) == saved_address_values.end()) {
             address_t *entry = new address_t;
             entry->size=size;
