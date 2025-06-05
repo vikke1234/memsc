@@ -222,8 +222,10 @@ void MainWindow::create_menu() {
             );
             return;
         }
-        std::unique_ptr<MapsDialog> dialog = std::make_unique<MapsDialog>(pid, this);
-        dialog->exec();
+        MapsDialog *dialog = new MapsDialog(pid, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowModality(Qt::NonModal);
+        dialog->show();
     });
     tools->addAction(maps);
     menubar->addMenu(filemenu);
