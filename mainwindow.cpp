@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <limits.h>
 
+#include "ui/MatchTableItem.h"
+
 static void toggleLayoutItems(QLayout *layout, bool enable) {
     for (int i = 0; i < layout->count(); ++i) {
         QLayoutItem *item = layout->itemAt(i);
@@ -162,6 +164,7 @@ void MainWindow::show_pid_window() {
 
 MainWindow::~MainWindow() {
     this->quit = true;
+    delete ui;
 }
 
 void MainWindow::create_menu() {
@@ -354,9 +357,6 @@ void MainWindow::handle_next_scan() {
      * it's probably very cpu expensive though */
     ui->memory_addresses->clearContents();
     ui->memory_addresses->setRowCount(0);
-    char found[32] = {0};
-    snprintf(found, 32, "Found: %ld", matches.size());
-    ui->amount_found->setText(found);
     int row = 0;
 
     /* loop to add the found addresses to the non saved memory address table */
@@ -373,8 +373,9 @@ void MainWindow::handle_next_scan() {
             [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
             assert(n == sizeof(val));
             ui->memory_addresses->insertRow(row);
-            ui->memory_addresses->setItem(row, 0, new QTableWidgetItem(str_address));
-            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(QString::number(val)));
+            ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, match));
+            ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
+            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
             row++;
 
         }, match);
@@ -383,6 +384,9 @@ void MainWindow::handle_next_scan() {
             break;
         }
     }
+    char found[32] = {0};
+    snprintf(found, 32, "Found: %ld", row);
+    ui->amount_found->setText(found);
 }
 
 void MainWindow::handle_double_click_saved(int row,int column) {
@@ -409,55 +413,43 @@ void MainWindow::delete_window() {
 
 }
 
+void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col) {
+    // Scans forward this many rows, unnecessary to go further down
+    constexpr int scan_forward = 50;
+    // Look around "current row", i.e. highest one
+    for (int row = std::max(widget->verticalScrollBar()->value() - scan_forward, 0); row < widget->verticalScrollBar()->value() + scan_forward; row++) {
+        QTableWidgetItem *addr_item = widget->item(row, addr_col);
+        if (addr_item == nullptr) {
+            continue;
+        }
+        QTableWidgetItem *current_value = widget->item(row, value_col);
+        if (current_value == nullptr) {
+            continue;
+        }
+        if (auto *mti = dynamic_cast<MatchTableItem*>(addr_item)) {
+            const Match &storedMatch = mti->match();
+            std::visit([&](auto *ptr) {
+                using U = std::remove_pointer_t<decltype(ptr)>;
+                if (!ptr) return;
+
+                U newVal{};
+                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &newVal, sizeof(newVal));
+                assert(n == sizeof(newVal));
+
+                current_value->setText(QString::number(newVal));
+            }, storedMatch);
+        }
+        else {
+            // Not a MatchTableItem
+        }
+    }
+}
+
 /* https://forum.qt.io/topic/88895/refreshing-content-of-qtablewidget/5 */
 void MainWindow::saved_address_thread() {
     while (!this->quit) {
         usleep(100);
-        /* this can probably be optimized somehow so it doesn't allocate so much constantly
-           could probably be assumed to be 4 bytes and then check if
-           it's not that and only then allocate more*/
-        for(int row = ui->saved_addresses->verticalScrollBar()->value();
-            (row < ui->saved_addresses->verticalScrollBar()->value() + 20) &&
-            (row < ui->saved_addresses->rowCount());
-            row++) {
-            QTableWidgetItem *address_string = ui->saved_addresses->item(row, 2);
-            if(address_string == nullptr) {
-                continue;
-            }
-
-            QTableWidgetItem *current_value = ui->saved_addresses->item(row, 4);
-            if(current_value == nullptr) {
-                continue;
-            }
-            void *address = nullptr;
-            sscanf(address_string->text().toStdString().c_str(), "%p", &address);
-            if(this->saved_address_values.find(address) == this->saved_address_values.end()) {
-                fprintf(stderr, "Error could not find address: %p\n", address);
-                continue;
-            }
-            struct address_t *segment = this->saved_address_values[address];
-            uint8_t *buffer = new uint8_t[segment->size];
-
-            ssize_t amount_read = scanner.read_process_memory(address, buffer,
-                                                              segment->size);
-
-            bool changed = false; /* makes the text red in the value box if the value has changed */
-            printf("reading: %p\n", address);
-            if((size_t) amount_read != segment->size) {
-                perror("saved_address_thread");
-            } else {
-                if(memcmp(segment->value, buffer, segment->size) != 0) {
-                    memcpy(segment->value, buffer, segment->size);
-                    changed = true;
-                }
-
-            }
-            delete[] buffer;
-            if(changed) {
-                /* should change the text to red if it has changed */
-                emit value_changed(segment, row);
-            }
-        }
+        update_table(ui->saved_addresses, 2, 4);
     }
 }
 

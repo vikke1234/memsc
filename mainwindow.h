@@ -5,6 +5,7 @@
 #include <QMenuBar>
 #include <QMenu>
 #include <QRegExpValidator>
+#include <QTableWidget>
 #include <QtConcurrent/QtConcurrent>
 
 #include <unordered_map>
@@ -63,6 +64,7 @@ private:
     void create_connections();
     void saved_address_thread();
     void show_pid_window();
+    void update_table(QTableWidget *widget, int addr_row, int value_row);
 
     enum saved_address_cells {
         SAVED_ADDRESS_CHECKBOX = 0,
