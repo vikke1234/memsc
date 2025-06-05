@@ -15,7 +15,9 @@
 #include <assert.h>
 #include <unistd.h>
 #include <limits.h>
+#include <QMessageBox>
 
+#include "ui/MapsDialog.h"
 #include "ui/MatchTableItem.h"
 
 static void toggleLayoutItems(QLayout *layout, bool enable) {
@@ -81,17 +83,15 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    MainWindow::ui->next_scan->setEnabled(false);
+    ui->next_scan->setEnabled(false);
     //MemoryWidget *memory_addresses = new MemoryWidget(this);
     ui->memory_addresses->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->memory_addresses->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    MainWindow::create_menu();
-    MainWindow::create_connections();
+    create_menu();
+    create_connections();
     ui->search_bar->setValidator(this->pos_only);
     ui->saved_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    connect(ui->attachButton, &QPushButton::clicked, this,
-                              &MainWindow::show_pid_window);
     QtConcurrent::run(this, &MainWindow::saved_address_thread);
     toggleLayoutItems(ui->memorySearchLayout, false);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -208,12 +208,33 @@ MainWindow::~MainWindow() {
 
 void MainWindow::create_menu() {
     menubar = new QMenuBar(this);
-    filemenu = new QMenu("File", this);
+    filemenu = new QMenu("File", menubar);
+    QMenu *tools = new QMenu("Tools", menubar);
+    QAction *maps = new QAction("Maps", tools);
+    maps->setShortcut(QKeySequence(Qt::Key_F12));
+    connect(maps, &QAction::triggered, [this]() {
+        pid_t pid = scanner.pid();
+        if (pid == 0) {
+            QMessageBox::warning(
+                this,
+                tr("Invalid PID"),
+                tr("Please attach to a process")
+            );
+            return;
+        }
+        std::unique_ptr<MapsDialog> dialog = std::make_unique<MapsDialog>(pid, this);
+        dialog->exec();
+    });
+    tools->addAction(maps);
     menubar->addMenu(filemenu);
+    menubar->addMenu(tools);
     this->layout()->setMenuBar(menubar);
 }
 
 void MainWindow::create_connections() {
+    ui->attachButton->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_A));
+    connect(ui->attachButton, &QPushButton::clicked, this,
+                          &MainWindow::show_pid_window);
     connect(ui->memory_addresses, &QTableWidget::cellDoubleClicked,
                      this, &MainWindow::save_row);
     connect(ui->value_type,
@@ -364,7 +385,7 @@ void MainWindow::handle_next_scan() {
 
     /* loop to add the found addresses to the non saved memory address table */
 
-    for(int i = 0; i < matches.size(); i++) {
+    for(size_t i = 0; i < matches.size(); i++) {
         char str_address[64] = {};
         Match &match = matches[i];
 

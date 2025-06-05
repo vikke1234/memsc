@@ -15,11 +15,13 @@ find_package(Qt5 COMPONENTS Widgets REQUIRED)
 find_package(Threads REQUIRED)
 
 add_executable(memsc
-  main.cpp
-  mainwindow.cpp
-  mainwindow.ui
-  ProcessMemory.cpp
-  maps.cpp
+    main.cpp
+    mainwindow.cpp
+    mainwindow.ui
+    ProcessMemory.cpp
+    maps.cpp
+    ui/MapsDialog.h
+    ui/MapsDialog.cpp
 )
 
 target_compile_options(memsc PRIVATE
