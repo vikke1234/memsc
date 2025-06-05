@@ -26,6 +26,7 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
 
     size_t list_len = 0;
     address_range *current = list.get();
+    address_range *prev = nullptr;
     while (getline(&line, &n, f) > 0) {
         uintptr_t start, end, offset;
         unsigned int dev_major, dev_minor;
@@ -74,9 +75,13 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
             current->perms |= PERM_EXECUTE;
         }
         current->next = std::make_unique<address_range>();
+        prev = current;
         current = current->next.get();
-
         list_len++;
+    }
+    if (prev != nullptr) {
+        // Remove last entry which was allocated unnecessarely, TODO: find out if there's a better way.
+        prev->next = nullptr;
     }
     free(line);
     fclose(f);
