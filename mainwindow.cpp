@@ -363,8 +363,10 @@ void MainWindow::handle_next_scan() {
     int row = 0;
 
     /* loop to add the found addresses to the non saved memory address table */
-    for(const auto &match : matches) {
+
+    for(int i = 0; i < matches.size(); i++) {
         char str_address[64] = {};
+        Match &match = matches[i];
 
         std::visit([&](auto *ptr) {
             if (ptr == nullptr) {
@@ -379,16 +381,17 @@ void MainWindow::handle_next_scan() {
             ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, match));
             ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
             ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
-            row++;
-
+            // Restructure the array to not have a bunch of "dead" slots
+            matches[row++] = ptr;
         }, match);
 
         if (row >= max_rows) {
             break;
         }
     }
+    matches.resize(row);
     char found[32] = {0};
-    snprintf(found, 32, "Found: %ld", row);
+    snprintf(found, 32, "Found: %d", row);
     ui->amount_found->setText(found);
 }
 
