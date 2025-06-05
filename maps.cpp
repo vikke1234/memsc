@@ -71,7 +71,7 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
             current->perms |= PERM_SHARED;
         }
         if(strchr(perms, 'x')) {
-            current->perms |= PERM_SHARED;
+            current->perms |= PERM_EXECUTE;
         }
         current->next = std::make_unique<address_range>();
         current = current->next.get();
