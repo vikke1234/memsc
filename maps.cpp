@@ -8,6 +8,7 @@
 #include "maps.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 
 std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
@@ -88,12 +89,15 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
     return list;
 }
 
-size_t get_address_range_list_size(address_range *list) {
+size_t get_address_range_list_size(address_range *list, bool include_exec) {
     size_t n = 0;
     address_range *current = list;
     while(current != nullptr) {
+        if ((!(current->perms & PERM_EXECUTE) || include_exec) && current->perms & PERM_READ &&
+            std::strncmp(current->name, "[vvar]", 4096) && std::strncmp(current->name, "[vvar_vclock]", 4096)) {
+            n += current->length;
+        }
         current = current->next.get();
-        n++;
     }
     return n;
 }

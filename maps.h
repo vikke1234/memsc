@@ -58,6 +58,6 @@ struct address_range {
 };
 
 std::unique_ptr<address_range> get_memory_ranges(pid_t pid);
-size_t get_address_range_list_size(address_range *list);
+size_t get_address_range_list_size(address_range *list, bool include_exec);
 
 #endif /* MAPS_H */

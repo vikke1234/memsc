@@ -23,6 +23,8 @@ using MatchSet = std::unordered_set<Match>;
 class ProcessMemory {
     pid_t _pid{};
     std::vector<Match> matches;
+    std::atomic<bool> scanning_;
+    std::function<void(size_t, size_t)> progressCallback_;
 
 public:
     ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
@@ -31,6 +33,13 @@ public:
 
     decltype(matches) &get_matches() {
         return matches;
+    }
+
+    bool scanning() {
+        return scanning_.load();
+    }
+    void setProgressCallback(std::function<void(size_t, size_t)> cb) {
+        progressCallback_ = cb;
     }
 
     void pid(const pid_t p) {
@@ -93,6 +102,7 @@ public:
      */
     template<typename T>
     decltype(matches) &scan(T value) {
+        scanning_ = true;
         using Clock = std::chrono::high_resolution_clock;
 
         auto overall_t0 = Clock::now();
@@ -108,12 +118,14 @@ public:
         double total_seconds = total_elapsed.count();
         fprintf(stdout, "Total scan time: %.3f s\n", total_seconds);
         fprintf(stdout, "matches: %lu\n", matches.size());
+        scanning_ = false;
         return matches;
     }
 
 private:
     template<typename T>
     void scan_found(T value) {
+        std::size_t found = 0;
         for (std::size_t i = 0; i < matches.size(); ++i) {
             auto &match = matches[i];
             std::visit([&]<typename U>(U *addr) {
@@ -126,10 +138,13 @@ private:
                     assert(n == sizeof(T));
                     if (new_value != value) {
                         matches[i] = static_cast<T *>(nullptr);
+                    } else {
+                        matches[found++] = addr;
                     }
                 }
             }, match);
         }
+        matches.resize(found);
     }
 
     template<typename T>
@@ -138,7 +153,8 @@ private:
         std::unique_ptr<address_range> list = get_memory_ranges(_pid);
         address_range *current = list.get();
         std::vector<Match> found;
-
+        size_t total_size = get_address_range_list_size(current, false);
+        size_t scanned_size = 0;
         while (current != nullptr) {
             // Do not scan vvar & vvar_clock, not permitted.
             if (!(current->perms & PERM_EXECUTE) && current->perms & PERM_READ &&
@@ -165,6 +181,8 @@ private:
                         "    → Scanned %zu addresses in %.5f s\n",
                         num_addresses,
                         seconds);
+                scanned_size += current->length;
+                progressCallback_(scanned_size, total_size);
             }
 
             current = current->next.get();

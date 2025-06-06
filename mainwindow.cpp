@@ -83,6 +83,13 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    ui->progressBar->setRange(0, 100);
+    scanner.setProgressCallback(
+    [this] (size_t current, size_t total) {
+        QMetaObject::invokeMethod(ui->progressBar, [this, current, total]() {
+            ui->progressBar->setValue((int) ((double) current / total * 100));
+        }, Qt::QueuedConnection);
+    });
     ui->next_scan->setEnabled(false);
     //MemoryWidget *memory_addresses = new MemoryWidget(this);
     ui->memory_addresses->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -338,12 +345,13 @@ void MainWindow::handle_new_scan() {
         ui->next_scan->setEnabled(false);
         ui->value_type->setEnabled(true);
     } else {
-        if(ui->search_bar->text().isEmpty()) {
+        if(ui->search_bar->text().isEmpty() || scanner.scanning()) {
             return;
         }
-        ui->next_scan->setEnabled(true);
         ui->value_type->setEnabled(false);
-        handle_next_scan();
+        QtConcurrent::run([this](){
+            handle_next_scan();
+        });
     }
 }
 
@@ -374,48 +382,54 @@ void MainWindow::handle_next_scan() {
         break;
     default:
         /* should never get here... */
+        assert(false);
         return;
     }
 
-    constexpr int max_rows = 10000;
-    auto &matches = scanner.get_matches();
-    /* start thread here somewhere to monitor the values later if they change?
-     * it's probably very cpu expensive though */
-    ui->memory_addresses->clearContents();
-    ui->memory_addresses->setRowCount(0);
-    int row = 0;
+    QMetaObject::invokeMethod(this, [this]() {
+        constexpr int max_rows = 10000;
+        auto &matches = scanner.get_matches();
+        /* start thread here somewhere to monitor the values later if they change?
+         * it's probably very cpu expensive though */
+        ui->memory_addresses->clearContents();
+        ui->memory_addresses->setRowCount(0);
+        int row = 0;
 
-    /* loop to add the found addresses to the non saved memory address table */
+        for(size_t i = 0; i < matches.size(); i++) {
+            char str_address[64] = {};
+            Match &match = matches[i];
 
-    for(size_t i = 0; i < matches.size(); i++) {
-        char str_address[64] = {};
-        Match &match = matches[i];
+            std::visit([&](auto *ptr) {
+                if (ptr == nullptr) {
+                    return;
+                }
+                matches[row] = ptr;
 
-        std::visit([&](auto *ptr) {
-            if (ptr == nullptr) {
-                return;
-            }
+                if (row >= max_rows) {
+                    row++;
+                    return;
+                }
 
-            snprintf(str_address, 64, "%p", ptr);
-            std::remove_pointer_t<decltype(ptr)> val{};
-            [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
-            assert(n == sizeof(val));
-            ui->memory_addresses->insertRow(row);
-            ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, match));
-            ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
-            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
-            // Restructure the array to not have a bunch of "dead" slots
-            matches[row++] = ptr;
-        }, match);
-
-        if (row >= max_rows) {
-            break;
+                snprintf(str_address, 64, "%p", ptr);
+                std::remove_pointer_t<decltype(ptr)> val{};
+                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
+                assert(n == sizeof(val));
+                ui->memory_addresses->insertRow(row);
+                ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, match));
+                ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
+                ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
+                // Restructure the array to not have a bunch of "dead" slots
+                row++;
+            }, match);
         }
-    }
-    matches.resize(row);
-    char found[32] = {0};
-    snprintf(found, 32, "Found: %d", row);
-    ui->amount_found->setText(found);
+        matches.resize(row);
+
+        char found[32] = {0};
+        snprintf(found, 32, "Found: %d", row);
+        ui->amount_found->setText(found);
+        ui->next_scan->setEnabled(true);
+    }, Qt::QueuedConnection);
+
 }
 
 void MainWindow::handle_double_click_saved(int row,int column) {
@@ -476,9 +490,17 @@ void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col)
 
 /* https://forum.qt.io/topic/88895/refreshing-content-of-qtablewidget/5 */
 void MainWindow::saved_address_thread() {
+    std::atomic<bool> has_run = true;
     while (!this->quit) {
-        usleep(100);
-        update_table(ui->saved_addresses, 2, 4);
+        while (!has_run.load()) {
+            usleep(100);
+        }
+        has_run = false;
+        QMetaObject::invokeMethod(this, [this, &has_run]() {
+            update_table(ui->saved_addresses, 0, 1);
+            update_table(ui->memory_addresses, 0, 1);
+            has_run = true;
+        }, Qt::QueuedConnection);
     }
 }
 

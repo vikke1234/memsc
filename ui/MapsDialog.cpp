@@ -99,7 +99,7 @@ QString MapsDialog::permsToString(unsigned char perms)
 void MapsDialog::populateTable()
 {
     address_range *current = rangesHead_.get();
-    size_t count = get_address_range_list_size(rangesHead_.get());
+    size_t count = get_address_range_list_size(rangesHead_.get(), false);
     table_->setRowCount(int(count));
 
     int row = 0;
