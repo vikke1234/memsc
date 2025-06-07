@@ -31,7 +31,7 @@ target_compile_options(memsc PRIVATE
 )
 
 target_link_options(memsc PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address>
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
         $<$<CONFIG:Release>:-flto=auto>
 )
 
