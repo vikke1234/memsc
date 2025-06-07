@@ -206,9 +206,9 @@ private:
         std::vector<T *> found{};
         // Expect ~33% hit-rate
         found.reserve(count / 33);
+        size_t i = 0;
 
         if constexpr (__AVX2__) {
-            size_t i = 0;
             size_t aligned_end = (count / 8) * 8; // 8 lanes of int32_t
             const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
 
@@ -222,24 +222,18 @@ private:
                 int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp));
                 while (mask) {
                     int lane = __builtin_ctz(mask); // [0..7]
-                    found.push_back(reinterpret_cast<T *>(start + i * sizeof(T) + static_cast<size_t>(lane)));
+                    found.push_back(reinterpret_cast<T *>(start + (i + static_cast<size_t>(lane)) * sizeof(T)));
                     mask &= (mask - 1);
                 }
             }
 
-            // Clean up if not aligned
-            for (size_t i = aligned_end; i < count; ++i) {
-                if (buf[i] == value) {
-                    found.push_back(
-                        reinterpret_cast<T *>(start + i * sizeof(T))
-                    );
-                }
-            }
-        } else {
-            for (size_t i = 0; i < count; i++) {
-                if (buf[i] == value) {
-                    found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
-                }
+            i = aligned_end;
+        }
+
+        // "Default implementation" as well as cleanup for AVX implementation.
+        for (; i < count; i++) {
+            if (buf[i] == value) {
+                found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
             }
         }
         return found;
