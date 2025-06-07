@@ -1,19 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "ProcessMemory.h"
+
 #include <QMainWindow>
-#include <QMenuBar>
-#include <QMenu>
-#include <QRegExpValidator>
 #include <QTableWidget>
 #include <QtConcurrent/QtConcurrent>
 
 #include <unordered_map>
-#include <variant>
 #include <thread>
-
-
-#include "ProcessMemory.h"
 
 struct address_t {
     /* fuck this shit, the ui can get to decide what the data is currently..

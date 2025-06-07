@@ -1,6 +1,5 @@
-#include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "maps.h"
+#include "mainwindow.h"
 
 #include <QtDebug>
 #include <QShortcut>
@@ -9,12 +8,13 @@
 #include <QInputDialog>
 #include <QScrollBar>
 #include <QKeyEvent>
+#include <QMenuBar>
+#include <QAction>
 #include <QListWidget>
 #include <iostream>
 
 #include <assert.h>
 #include <unistd.h>
-#include <limits.h>
 #include <QMessageBox>
 
 #include "ui/MapsDialog.h"
@@ -492,7 +492,7 @@ void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col)
 void MainWindow::saved_address_thread() {
     std::atomic<bool> has_run = true;
     while (!this->quit) {
-        while (!has_run.load()) {
+        while (!has_run.load() && !this->quit) {
             usleep(100);
         }
         has_run = false;
