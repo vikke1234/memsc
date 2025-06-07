@@ -28,9 +28,9 @@ using MatchSet = std::unordered_set<Match>;
  */
 class ProcessMemory {
     pid_t _pid{};
-    std::vector<Match> matches;
-    std::atomic<bool> scanning_;
-    std::function<void(size_t, size_t)> progressCallback_;
+    std::vector<Match> matches{};
+    std::atomic<bool> scanning_{};
+    std::function<void(size_t, size_t)> progressCallback_{};
 
 public:
     ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
@@ -67,30 +67,30 @@ public:
     std::vector<T *> scan_range(const address_range &range, const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
         constexpr std::size_t max_size = IOV_MAX * 4096;
-        constexpr std::size_t increments = max_size / sizeof(T);
+        constexpr std::size_t count = max_size / sizeof(T);
 
         std::vector<T *> found;
 
-        std::unique_ptr<T[]> buf(new(std::align_val_t(64)) T[increments]);
+        std::unique_ptr<T[]> buf(new(std::align_val_t(64)) T[count]);
         char *end = static_cast<char *>(range.start) + range.length;
 
-        for (char *start = static_cast<char *>(range.start);
+        for (char *start = reinterpret_cast<char *>(range.start);
              start < end;
-             start += increments) {
+             start += max_size) {
             std::uintptr_t ptrdiff = end - start;
             ssize_t size = std::min(max_size, ptrdiff);
 
             ssize_t nread = read_process_memory(start, buf.get(), size);
-            if (nread < 0 && nread == size) {
+            if (nread < 0 || nread != size) {
                 std::fprintf(
                     stderr,
-                    "ProcessMemory: Error reading memory at %p: %s\n",
+                    "ProcessMemory: Error partial read at %p: %s\n",
                     static_cast<void *>(start),
                     std::strerror(errno)
                 );
                 return found;
             }
-            auto addresses = filter_results(value, start, buf.get(), increments);
+            auto addresses = filter_results(value, start, buf.get(), nread / sizeof(T));
             found.insert(found.end(), addresses.begin(), addresses.end());
         }
 
@@ -152,27 +152,26 @@ private:
     template<typename T>
     std::vector<Match> initial_scan(T value) {
         using Clock = std::chrono::high_resolution_clock;
-        std::unique_ptr<address_range> list = get_memory_ranges(_pid);
-        address_range *current = list.get();
+        std::vector<address_range> list = get_memory_ranges(_pid);
         std::vector<Match> found;
-        size_t total_size = get_address_range_list_size(current, false);
+        size_t total_size = get_address_range_list_size(list, false);
         size_t scanned_size = 0;
-        while (current != nullptr) {
+        for (address_range &current : list) {
             // Do not scan vvar & vvar_clock, not permitted.
-            if (!(current->perms & PERM_EXECUTE) && current->perms & PERM_READ &&
-                std::strncmp(current->name, "[vvar]", 4096) && std::strncmp(current->name, "[vvar_vclock]", 4096)) {
+            if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ &&
+                std::strncmp(current.name, "[vvar]", 4096) && std::strncmp(current.name, "[vvar_vclock]", 4096)) {
                 fprintf(stdout,
                         "Scanning %s: %p - %p (size: %zx)\n",
-                        current->name,
-                        current->start,
-                        static_cast<char *>(current->start) + current->length,
-                        current->length);
+                        current.name,
+                        current.start,
+                        static_cast<char *>(current.start) + current.length,
+                        current.length);
 
-                const size_t region_bytes = current->length;
+                const size_t region_bytes = current.length;
                 const size_t num_addresses = region_bytes / sizeof(T);
 
                 auto t0 = Clock::now();
-                auto current_matches = scan_range<T>(*current, value);
+                auto current_matches = scan_range<T>(current, value);
                 found.insert(found.end(), current_matches.begin(), current_matches.end());
 
                 auto t1 = Clock::now();
@@ -183,11 +182,9 @@ private:
                         "    → Scanned %zu addresses in %.5f s\n",
                         num_addresses,
                         seconds);
-                scanned_size += current->length;
+                scanned_size += current.length;
                 progressCallback_(scanned_size, total_size);
             }
-
-            current = current->next.get();
         }
         return found;
     }
@@ -225,7 +222,7 @@ private:
                 int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp));
                 while (mask) {
                     int lane = __builtin_ctz(mask); // [0..7]
-                    found.push_back(reinterpret_cast<T *>(start) + i + static_cast<size_t>(lane));
+                    found.push_back(reinterpret_cast<T *>(start + i * sizeof(T) + static_cast<size_t>(lane)));
                     mask &= (mask - 1);
                 }
             }
@@ -234,14 +231,13 @@ private:
             for (size_t i = aligned_end; i < count; ++i) {
                 if (buf[i] == value) {
                     found.push_back(
-                        reinterpret_cast<T *>(start) + i
+                        reinterpret_cast<T *>(start + i * sizeof(T))
                     );
                 }
             }
         } else {
             for (size_t i = 0; i < count; i++) {
                 if (buf[i] == value) {
-                    assert(start + i < (static_cast<char*>(range.start) + range.length));
                     found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
                 }
             }

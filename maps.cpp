@@ -10,8 +10,9 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <vector>
 
-std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
+std::vector<address_range> get_memory_ranges(pid_t pid) {
     auto list = std::make_unique<address_range>();
 
     char filename[256];
@@ -20,15 +21,16 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
     f =  fopen(filename, "r");
     if(f == nullptr) {
         fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
-        return nullptr;
+        return {};
     }
     char *line = nullptr;
     size_t n;
 
-    size_t list_len = 0;
-    address_range *current = list.get();
-    address_range *prev = nullptr;
+    std::vector<address_range> ranges{};
+
     while (getline(&line, &n, f) > 0) {
+        address_range current{};
+
         uintptr_t start, end, offset;
         unsigned int dev_major, dev_minor;
         char    perms[8];
@@ -44,60 +46,48 @@ std::unique_ptr<address_range> get_memory_ranges(pid_t pid) {
             name_end = name_start = 0;
         }
 
-        if(current == nullptr) {
-            break;
-        }
-
         dev_t device = makedev(dev_major, dev_minor);
-        current->start = (void *)start;
-        current->length = end - start;
-        current->offset = offset;
-        current->device = device;
-        current->inode = (ino_t) inode;
+        current.start = (void *)start;
+        current.length = end - start;
+        current.offset = offset;
+        current.device = device;
+        current.inode = inode;
 
         if (name_end > name_start) {
-            memcpy(current->name, line + name_start, (size_t) (name_end - name_start));
+            memcpy(current.name, line + name_start, (size_t) (name_end - name_start));
         }
-        current->name[name_end-name_start] = '\0';
+        current.name[name_end-name_start] = '\0';
 
         if(strchr(perms, 'r')) {
-            current->perms |= PERM_READ;
+            current.perms |= PERM_READ;
         }
         if(strchr(perms, 'w')) {
-            current->perms |= PERM_WRITE;
+            current.perms |= PERM_WRITE;
         }
         if(strchr(perms, 'p')) {
-            current->perms |= PERM_PRIVATE;
+            current.perms |= PERM_PRIVATE;
         }
         if(strchr(perms, 's')) {
-            current->perms |= PERM_SHARED;
+            current.perms |= PERM_SHARED;
         }
         if(strchr(perms, 'x')) {
-            current->perms |= PERM_EXECUTE;
+            current.perms |= PERM_EXECUTE;
         }
-        current->next = std::make_unique<address_range>();
-        prev = current;
-        current = current->next.get();
-        list_len++;
+        ranges.push_back(current);
     }
-    if (prev != nullptr) {
-        // Remove last entry which was allocated unnecessarely, TODO: find out if there's a better way.
-        prev->next = nullptr;
-    }
+
     free(line);
     fclose(f);
-    return list;
+    return ranges;
 }
 
-size_t get_address_range_list_size(address_range *list, bool include_exec) {
+size_t get_address_range_list_size(std::vector<address_range> &ranges, bool include_exec) {
     size_t n = 0;
-    address_range *current = list;
-    while(current != nullptr) {
-        if ((!(current->perms & PERM_EXECUTE) || include_exec) && current->perms & PERM_READ &&
-            std::strncmp(current->name, "[vvar]", 4096) && std::strncmp(current->name, "[vvar_vclock]", 4096)) {
-            n += current->length;
+    for(address_range& current : ranges) {
+        if ((!(current.perms & PERM_EXECUTE) || include_exec) && current.perms & PERM_READ &&
+            std::strncmp(current.name, "[vvar]", 4096) && std::strncmp(current.name, "[vvar_vclock]", 4096)) {
+            n += current.length;
         }
-        current = current->next.get();
     }
     return n;
 }

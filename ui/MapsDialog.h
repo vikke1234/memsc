@@ -2,12 +2,10 @@
 
 #include <QDialog>
 #include <QTableWidget>
-#include <QVBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QString>
 #include <QHBoxLayout>
-#include <memory>
 #include <sys/types.h>
 #include "maps.h"  // your existing header
 
@@ -40,7 +38,7 @@ private:
     QPushButton                    *searchButton_;
     QTableWidget                   *table_;
     QVBoxLayout                    *mainLayout_;
-    std::unique_ptr<address_range>  rangesHead_;  ///< keep the head pointer around
+    std::vector<address_range>  ranges;  ///< keep the head pointer around
 
     /// Helper: Convert the perms bitmask into a human‐readable "rwxp" string.
     static QString permsToString(unsigned char perms);

@@ -34,7 +34,7 @@ MapsDialog::MapsDialog(pid_t pid, QWidget *parent)
     setWindowTitle(QString("Memory Map for PID %1").arg(pid));
     resize(900, 500);
 
-    rangesHead_ = get_memory_ranges(pid);
+    ranges = get_memory_ranges(pid);
 
     auto *searchLayout = new QHBoxLayout();
     searchLayout->addWidget(new QLabel("Address:", this));
@@ -98,51 +98,50 @@ QString MapsDialog::permsToString(unsigned char perms)
 
 void MapsDialog::populateTable()
 {
-    address_range *current = rangesHead_.get();
-    size_t count = get_address_range_list_size(rangesHead_.get(), false);
-    table_->setRowCount(int(count));
+    size_t count = get_address_range_list_size(ranges, false);
+    table_->setRowCount(int(ranges.size()));
 
     int row = 0;
-    while (current != nullptr) {
+    for (address_range &current : ranges) {
         // Column 0: Start address (hex)
         char bufStart[32], bufEnd[32];
-        uintptr_t startAddr = reinterpret_cast<uintptr_t>(current->start);
+        uintptr_t startAddr = reinterpret_cast<uintptr_t>(current.start);
         sprintf(bufStart, "0x%0*" PRIxPTR,
                 (int)(sizeof(void*)*2),
                 startAddr);
 
         // Column 1: End address = start + length
-        uintptr_t endAddr = startAddr + current->length;
+        uintptr_t endAddr = startAddr + current.length;
         sprintf(bufEnd, "0x%0*" PRIxPTR,
                 (int)(sizeof(void*)*2),
                 endAddr);
 
         // Column 2: Length (decimal)
-        QString lengthStr = QString::number(current->length);
+        QString lengthStr = QString::number(current.length);
 
         // Column 3: Permissions string
-        QString permsStr = permsToString(current->perms);
+        QString permsStr = permsToString(current.perms);
 
         // Column 4: Offset (hex)
         char bufOffset[32];
-        sprintf(bufOffset, "0x%zx", current->offset);
+        sprintf(bufOffset, "0x%zx", current.offset);
 
         // Column 5: Device = major:minor
-        unsigned int major = (current->device >> 8) & 0xff;
-        unsigned int minor = (current->device & 0xff) |
-                             ((current->device >> 12) & 0xfff00);
+        unsigned int major = (current.device >> 8) & 0xff;
+        unsigned int minor = (current.device & 0xff) |
+                             ((current.device >> 12) & 0xfff00);
         QString deviceStr = QString("%1:%2").arg(major).arg(minor);
 
         // Column 6: inode (if any)
         QString inode;
-        if (current->inode != 0) {
-            inode = QString::number(current->inode);
+        if (current.inode != 0) {
+            inode = QString::number(current.inode);
         }
 
         // Column 7: name (if any)
         QString name;
-        if (current->name[0] != '\0') {
-            name = QString::fromUtf8(current->name);
+        if (current.name[0] != '\0') {
+            name = QString::fromUtf8(current.name);
         }
 
         QTableWidgetItem *startItem  = new QTableWidgetItem(QString::fromUtf8(bufStart));
@@ -156,7 +155,7 @@ void MapsDialog::populateTable()
         nameItem->setToolTip(name);
 
         // --- if this range is executable, give a very light background to all columns ---
-        if (current->perms & PERM_EXECUTE) {
+        if (current.perms & PERM_EXECUTE) {
             // e.g. a pale red tint; tweak RGB if you prefer something lighter/darker
             QColor highlightColor(255, 230, 230);
             QBrush  brush(highlightColor);
@@ -180,22 +179,19 @@ void MapsDialog::populateTable()
         table_->setItem(row, 5, deviceItem);
         table_->setItem(row, 6, inodeItem);
         table_->setItem(row, 7, nameItem);
-        current = current->next.get();
         ++row;
     }
 }
 
 int MapsDialog::findRowForAddress(uintptr_t addr) const
 {
-    address_range *cur = rangesHead_.get();
     int row = 0;
-    while (cur != nullptr) {
-        uintptr_t startAddr = reinterpret_cast<uintptr_t>(cur->start);
-        uintptr_t endAddr = startAddr + cur->length;
+    for (const address_range &cur : ranges) {
+        uintptr_t startAddr = reinterpret_cast<uintptr_t>(cur.start);
+        uintptr_t endAddr = startAddr + cur.length;
         if (addr >= startAddr && addr < endAddr) {
             return row;
         }
-        cur = cur->next.get();
         ++row;
     }
     return -1;

@@ -2,7 +2,7 @@
 #define MAPS_H
 
 #include <memory>
-#include <stdlib.h>
+#include <vector>
 #include <linux/limits.h>
 
 enum file_perms {
@@ -14,9 +14,6 @@ enum file_perms {
 };
 
 struct address_range {
-    /** Pointer to the next address range */
-    std::unique_ptr<address_range>  next;
-
     /** Start of memory range */
     void                            *start;
 
@@ -57,7 +54,7 @@ struct address_range {
     char                            name[PATH_MAX];
 };
 
-std::unique_ptr<address_range> get_memory_ranges(pid_t pid);
-size_t get_address_range_list_size(address_range *list, bool include_exec);
+std::vector<address_range> get_memory_ranges(pid_t pid);
+size_t get_address_range_list_size(std::vector<address_range> &ranges, bool include_exec);
 
 #endif /* MAPS_H */
