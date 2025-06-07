@@ -1,4 +1,7 @@
 #pragma once
+#include "maps.h"
+
+#include <immintrin.h>
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
@@ -9,8 +12,11 @@
 #include <sys/types.h>
 #include <cstdio>
 #include <iostream>
-
-#include "maps.h"
+#include <vector>
+#include <atomic>
+#include <cassert>
+#include <chrono>
+#include <functional>
 
 
 using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *>;
@@ -38,6 +44,7 @@ public:
     bool scanning() {
         return scanning_.load();
     }
+
     void setProgressCallback(std::function<void(size_t, size_t)> cb) {
         progressCallback_ = cb;
     }
@@ -59,8 +66,8 @@ public:
     template<typename T>
     std::vector<T *> scan_range(const address_range &range, const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
-        const std::size_t max_size = IOV_MAX * sysconf(_SC_PAGESIZE);
-        const std::size_t increments = max_size / sizeof(T);
+        constexpr std::size_t max_size = IOV_MAX * 4096;
+        constexpr std::size_t increments = max_size / sizeof(T);
 
         std::vector<T *> found;
 
@@ -83,13 +90,8 @@ public:
                 );
                 return found;
             }
-
-            for (size_t i = 0; i < size / sizeof(T); i++) {
-                if (buf[i] == value) {
-                    assert(start + i < (static_cast<char*>(range.start) + range.length));
-                    found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
-                }
-            }
+            auto addresses = filter_results(value, start, buf.get(), increments);
+            found.insert(found.end(), addresses.begin(), addresses.end());
         }
 
         return found;
@@ -186,6 +188,63 @@ private:
             }
 
             current = current->next.get();
+        }
+        return found;
+    }
+
+    /**
+     * @brief Finds addresses containing the value given by `value`
+     *
+     * TODO: this could probably be an actual pattern matching library.
+     *
+     * @tparam T Type of value to look for
+     * @param value value to look for
+     * @param start start of the memory range
+     * @param buf buffer containing read values
+     * @param count elements in the buffer
+     * @return vector containing addresses that match the value
+     */
+    template<typename T>
+    std::vector<T *> filter_results(T value, char *start, T *buf, size_t count) {
+        std::vector<T *> found{};
+        // Expect ~33% hit-rate
+        found.reserve(count / 33);
+
+        if constexpr (__AVX2__) {
+            size_t i = 0;
+            size_t aligned_end = (count / 8) * 8; // 8 lanes of int32_t
+            const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
+
+            for (; i < aligned_end; i += 8) {
+                if (i % 4096 == 0) {
+                    __builtin_prefetch(buf + i + 4096);
+                }
+
+                __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(&buf[i]));
+                __m256i cmp = _mm256_cmpeq_epi32(chunk, val_vec);
+                int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp));
+                while (mask) {
+                    int lane = __builtin_ctz(mask); // [0..7]
+                    found.push_back(reinterpret_cast<T *>(start) + i + static_cast<size_t>(lane));
+                    mask &= (mask - 1);
+                }
+            }
+
+            // Clean up if not aligned
+            for (size_t i = aligned_end; i < count; ++i) {
+                if (buf[i] == value) {
+                    found.push_back(
+                        reinterpret_cast<T *>(start) + i
+                    );
+                }
+            }
+        } else {
+            for (size_t i = 0; i < count; i++) {
+                if (buf[i] == value) {
+                    assert(start + i < (static_cast<char*>(range.start) + range.length));
+                    found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
+                }
+            }
         }
         return found;
     }
