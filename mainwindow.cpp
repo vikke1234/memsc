@@ -139,7 +139,7 @@ void MainWindow::show_pid_window() {
 	PidDialog *dialog = new PidDialog(this);
 	connect(dialog, &PidDialog::pidSelected, this, [this] (pid_t pid, const QString &name) {
 		scanner.pid(pid);
-		setWindowTitle(QString("MemSC - ") + QString::number(pid) + name);
+		setWindowTitle(QString("MemSC - ") + name);
 		toggleLayoutItems(ui->memorySearchLayout, true);
 		ui->next_scan->setEnabled(false);
 		ui->search_bar->setFocus();
