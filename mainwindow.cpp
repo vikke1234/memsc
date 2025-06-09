@@ -108,104 +108,17 @@ MainWindow::MainWindow(QWidget *parent)
 
 
 void MainWindow::show_pid_window() {
-    QDir procDir("/proc");
-    QStringList entries = procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    QList<QPair<int, QString>> pidInfoList;
-    int maxPidDigits = 0;
-
-    for (const QString &entry : entries) {
-        bool ok = false;
-        int pid = entry.toInt(&ok);
-        if (!ok) continue;
-
-        QString commPath = QString("/proc/%1/comm").arg(pid);
-        QFile commFile(commPath);
-        QString procName = "<unknown>";
-
-        if (commFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&commFile);
-            procName = in.readLine().trimmed();
-            commFile.close();
-        }
-
-        pidInfoList.append(qMakePair(pid, procName));
-
-        int pidDigits = QString::number(pid).length();
-        if (pidDigits > maxPidDigits) {
-            maxPidDigits = pidDigits;
-        }
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Select a PID"));
-    QVBoxLayout *layout = new QVBoxLayout(&dialog);
-
-    QLineEdit *searchEdit = new QLineEdit(&dialog);
-    searchEdit->setPlaceholderText(tr("Search..."));
-    layout->addWidget(searchEdit);
-
-    QListWidget *listWidget = new QListWidget(&dialog);
-    for (const auto &pidInfo : pidInfoList) {
-        int pid = pidInfo.first;
-        const QString &name = pidInfo.second;
-        QString itemText = QString("%1 : %2")
-                               .arg(pid, -maxPidDigits)
-                               .arg(name);
-
-        QListWidgetItem *item = new QListWidgetItem(itemText, listWidget);
-        item->setData(Qt::UserRole, pid);
-    }
-    layout->addWidget(listWidget);
-
-    connect(searchEdit, &QLineEdit::textChanged, [listWidget](const QString &text) {
-        for (int i = 0; i < listWidget->count(); ++i) {
-            QListWidgetItem *item = listWidget->item(i);
-            bool match = item->text().contains(text, Qt::CaseInsensitive);
-            item->setHidden(!match);
-        }
-    });
-
-    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
-            [this, &dialog](QListWidgetItem *item){
-                int pid = item->data(Qt::UserRole).toInt();
-                QString displayText = item->text();
-                qDebug() << "User clicked PID:" << pid << "(" << displayText << ")";
-                scanner.pid(pid);
-                setWindowTitle("MemSC - " + displayText);
-                dialog.close();
-                toggleLayoutItems(ui->memorySearchLayout, true);
-                ui->next_scan->setEnabled(false);
-                ui->search_bar->setFocus();
-                ui->memory_addresses->clearContents();
-                ui->memory_addresses->setRowCount(0);
-                ui->saved_addresses->clearContents();
-                ui->saved_addresses->setRowCount(0);
-            });
-
-    QShortcut *enterShortcut = new QShortcut(QKeySequence(Qt::Key_Return), &dialog);
-    connect(enterShortcut, &QShortcut::activated, [this, listWidget, &dialog]() {
-        for (int i = 0; i < listWidget->count(); ++i) {
-            QListWidgetItem *item = listWidget->item(i);
-            if (!item->isHidden()) {
-                int pid = item->data(Qt::UserRole).toInt();
-                QString displayText = item->text();
-                qDebug() << "User pressed Enter, selected PID:" << pid << "(" << displayText << ")";
-                scanner.pid(pid);
-                setWindowTitle("MemSC - " + displayText);
-                dialog.close();
-                toggleLayoutItems(ui->memorySearchLayout, true);
-                ui->next_scan->setEnabled(false);
-                ui->search_bar->setFocus();
-                ui->memory_addresses->clearContents();
-                ui->memory_addresses->setRowCount(0);
-                ui->saved_addresses->clearContents();
-                ui->saved_addresses->setRowCount(0);
-                break;
-            }
-        }
-    });
-
-    dialog.exec();
+	PidDialog *dialog = new PidDialog(this);
+	connect(dialog, &PidDialog::pidSelected, this, [this] (pid_t pid, const QString &name) {
+		scanner.pid(pid);
+		setWindowTitle(QString("MemSC - ") + QString::number(pid) + name);
+		toggleLayoutItems(ui->memorySearchLayout, true);
+		ui->next_scan->setEnabled(false);
+		ui->search_bar->setFocus();
+		ui->memory_addresses->clearContents();
+		ui->saved_addresses->clearContents();
+	});
+	dialog->exec();
 }
 
 MainWindow::~MainWindow() {

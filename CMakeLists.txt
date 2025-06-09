@@ -22,6 +22,7 @@ add_executable(memsc
     maps.cpp
     ui/MapsDialog.h
     ui/MapsDialog.cpp
+	ui/PidDialog.cpp
 )
 
 target_compile_options(memsc PRIVATE
