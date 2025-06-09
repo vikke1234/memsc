@@ -43,9 +43,8 @@ MapsDialog::MapsDialog(pid_t pid, QWidget *parent)
     searchLayout->addWidget(searchEdit_);
     searchLayout->addWidget(searchButton_);
 
-    // Make pressing Enter in the QLineEdit trigger the same slot as clicking "Go"
-    connect(searchEdit_, &QLineEdit::returnPressed, this, &MapsDialog::searchAddress);
-    connect(searchButton_, &QPushButton::clicked, this, &MapsDialog::searchAddress);
+    connect(searchButton_, &QPushButton::clicked, this,
+			&MapsDialog::searchAddress);
 
     table_->setColumnCount(8);
     QStringList headers;
@@ -99,7 +98,6 @@ QString MapsDialog::permsToString(unsigned char perms)
 
 void MapsDialog::populateTable()
 {
-    size_t count = get_address_range_list_size(ranges, false);
     table_->setRowCount(int(ranges.size()));
 
     int row = 0;
@@ -185,13 +183,13 @@ void MapsDialog::populateTable()
 }
 
 void MapsDialog::gotoAddress(uintptr_t addr) const {
-	QMetaObject::invokeMethod(table_, [&] {
+	QMetaObject::invokeMethod(table_, [this, addr] {
 		int targetRow = findRowForAddress(addr);
 		if (targetRow < 0) {
 			QMessageBox::information(table_,
 									 "Not Found",
 									 QString("Address %1 is not contained in any mapped region.")
-										 .arg(addr));
+										 .arg(addr, 0, 16));
 			return;
 		}
 
