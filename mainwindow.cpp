@@ -96,6 +96,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->next_scan->setEnabled(false);
     //MemoryWidget *memory_addresses = new MemoryWidget(this);
     ui->memory_addresses->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->memory_addresses->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->memory_addresses->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	ui->memory_addresses->setContextMenuPolicy(Qt::CustomContextMenu);
