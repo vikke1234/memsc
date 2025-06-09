@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QString>
 #include <QHBoxLayout>
+#include <cstdint>
 #include <sys/types.h>
 #include "maps.h"  // your existing header
 
@@ -26,8 +27,9 @@ public:
      *   Should be non‐zero and refer to a live process.
      */
     explicit MapsDialog(pid_t pid, QWidget *parent = nullptr);
-
     ~MapsDialog() override = default;
+
+    void gotoAddress(uintptr_t addr) const;
 
 private slots:
     /// Called when the user presses "Go" or hits Enter in the QLineEdit.

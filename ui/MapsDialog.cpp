@@ -7,6 +7,7 @@
 #include <QStyledItemDelegate>
 #include <inttypes.h>    // for PRIuPTR
 #include <QApplication>
+#include <qmetaobject.h>
 
 /**
  * Delegate to elide the start of a filename instead of the end.
@@ -183,6 +184,22 @@ void MapsDialog::populateTable()
     }
 }
 
+void MapsDialog::gotoAddress(uintptr_t addr) const {
+	QMetaObject::invokeMethod(table_, [&] {
+		int targetRow = findRowForAddress(addr);
+		if (targetRow < 0) {
+			QMessageBox::information(table_,
+									 "Not Found",
+									 QString("Address %1 is not contained in any mapped region.")
+										 .arg(addr));
+			return;
+		}
+
+		table_->selectRow(targetRow);
+		table_->scrollToItem(table_->item(targetRow, 0), QAbstractItemView::PositionAtCenter);
+	}, Qt::QueuedConnection);
+}
+
 int MapsDialog::findRowForAddress(uintptr_t addr) const
 {
     int row = 0;
@@ -216,17 +233,5 @@ void MapsDialog::searchAddress()
                              "Make sure it’s a hex or decimal number (e.g. 0x7f3e2a500000).");
         return;
     }
-
-    int targetRow = findRowForAddress(value);
-    if (targetRow < 0) {
-        QMessageBox::information(this,
-                                 "Not Found",
-                                 QString("Address %1 is not contained in any mapped region.")
-                                     .arg(text));
-        return;
-    }
-
-    // Select and scroll to that row
-    table_->selectRow(targetRow);
-    table_->scrollToItem(table_->item(targetRow, 0), QAbstractItemView::PositionAtCenter);
+	gotoAddress(value);
 }

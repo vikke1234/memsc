@@ -1,5 +1,8 @@
 #include "ui_mainwindow.h"
 #include "mainwindow.h"
+#include "ui/MapsDialog.h"
+#include "ui/MatchTableItem.h"
+#include "ui/PidDialog.h"
 
 #include <QtDebug>
 #include <QShortcut>
@@ -14,11 +17,11 @@
 #include <iostream>
 
 #include <assert.h>
+#include <qevent.h>
+#include <qlineedit.h>
 #include <unistd.h>
 #include <QMessageBox>
 
-#include "ui/MapsDialog.h"
-#include "ui/MatchTableItem.h"
 
 static void toggleLayoutItems(QLayout *layout, bool enable) {
     for (int i = 0; i < layout->count(); ++i) {
@@ -95,6 +98,30 @@ MainWindow::MainWindow(QWidget *parent)
     ui->memory_addresses->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->memory_addresses->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	ui->memory_addresses->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->memory_addresses, &QTableWidget::customContextMenuRequested, this,
+        [this](const QPoint &pos) {
+        // figure out which row was clicked
+        QModelIndex idx = ui->memory_addresses->indexAt(pos);
+        if (!idx.isValid())
+            return;
+
+        int row = idx.row();
+
+        // build & exec the menu
+        QMenu menu(this);
+        QAction *showInMaps = menu.addAction(tr("Show in maps"));
+        connect(showInMaps, &QAction::triggered, this, [this, row]() {
+            // grab the address string from column 0
+            auto *item = ui->memory_addresses->item(row, 0);
+            if (!item) return;
+            QString addr = item->text();
+            // do your mapping logic here, e.g. emit a signal:
+            locate_in_maps(addr.toULongLong(nullptr, 16));
+        });
+
+        menu.exec(ui->memory_addresses->viewport()->mapToGlobal(pos));
+    });
     create_menu();
     create_connections();
     ui->search_bar->setValidator(this->pos_only);
@@ -126,6 +153,23 @@ MainWindow::~MainWindow() {
     delete ui;
 }
 
+void MainWindow::createMapsDialog(pid_t pid) {
+    if (mapsDialog == nullptr) {
+        mapsDialog = new MapsDialog(pid, this);
+        mapsDialog->setAttribute(Qt::WA_DeleteOnClose);
+        mapsDialog->setWindowModality(Qt::NonModal);
+        connect(mapsDialog, &QObject::destroyed, this, [this]() {
+            mapsDialog = nullptr;
+        });
+        mapsDialog->show();
+    }
+}
+
+void MainWindow::locate_in_maps(uintptr_t ptr) {
+	createMapsDialog(scanner.pid());
+    mapsDialog->gotoAddress(reinterpret_cast<uintptr_t>(ptr));
+}
+
 void MainWindow::create_menu() {
     menubar = new QMenuBar(this);
     filemenu = new QMenu("File", menubar);
@@ -142,10 +186,8 @@ void MainWindow::create_menu() {
             );
             return;
         }
-        MapsDialog *dialog = new MapsDialog(pid, this);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->setWindowModality(Qt::NonModal);
-        dialog->show();
+
+		createMapsDialog(pid);
     });
     tools->addAction(maps);
     menubar->addMenu(filemenu);

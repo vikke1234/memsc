@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "ProcessMemory.h"
+#include "ui/MapsDialog.h"
 
 #include <QMainWindow>
 #include <QTableWidget>
@@ -44,8 +45,9 @@ public slots:
     void saved_address_change(address_t *segment, int row);
 
 private:
-    QMenuBar    *menubar;
-    QMenu       *filemenu;
+    QMenuBar    *menubar{};
+    QMenu       *filemenu{};
+	MapsDialog  *mapsDialog{};
     QRegExpValidator *pos_only = new QRegExpValidator(QRegExp("\\d*"), this);
     QRegExpValidator *pos_neg = new QRegExpValidator(QRegExp("[+-]?\\d*"), this);
 
@@ -60,6 +62,8 @@ private:
     void saved_address_thread();
     void show_pid_window();
     void update_table(QTableWidget *widget, int addr_row, int value_row);
+	void createMapsDialog(pid_t pid);
+	void locate_in_maps(uintptr_t ptr);
 
     enum saved_address_cells {
         SAVED_ADDRESS_CHECKBOX = 0,
