@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-std::vector<address_range> get_memory_ranges(pid_t pid) {
+std::vector<address_range> get_memory_ranges(pid_t pid, bool include_exec) {
     auto list = std::make_unique<address_range>();
 
     char filename[256];
@@ -73,7 +73,11 @@ std::vector<address_range> get_memory_ranges(pid_t pid) {
         if(strchr(perms, 'x')) {
             current.perms |= PERM_EXECUTE;
         }
-        ranges.push_back(current);
+        if ((include_exec || !(current.perms & PERM_EXECUTE)) &&
+            std::strncmp(current.name, "[vvar]", 4096) &&
+            std::strncmp(current.name, "[vvar_vclock]", 4096)) {
+            ranges.push_back(current);
+        }
     }
 
     free(line);
@@ -84,8 +88,7 @@ std::vector<address_range> get_memory_ranges(pid_t pid) {
 size_t get_address_range_list_size(std::vector<address_range> &ranges, bool include_exec) {
     size_t n = 0;
     for(address_range& current : ranges) {
-        if ((!(current.perms & PERM_EXECUTE) || include_exec) && current.perms & PERM_READ &&
-            std::strncmp(current.name, "[vvar]", 4096) && std::strncmp(current.name, "[vvar_vclock]", 4096)) {
+        if ((!(current.perms & PERM_EXECUTE) || include_exec) && current.perms & PERM_READ) {
             n += current.length;
         }
     }

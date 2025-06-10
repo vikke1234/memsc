@@ -35,7 +35,7 @@ MapsDialog::MapsDialog(pid_t pid, QWidget *parent)
     setWindowTitle(QString("Memory Map for PID %1").arg(pid));
     resize(900, 500);
 
-    ranges = get_memory_ranges(pid);
+    ranges = get_memory_ranges(pid, true);
 
     auto *searchLayout = new QHBoxLayout();
     searchLayout->addWidget(new QLabel("Address:", this));

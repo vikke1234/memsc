@@ -1,17 +1,16 @@
 #pragma once
 #include "maps.h"
 
+#include <cstddef>
 #include <immintrin.h>
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
 #include <variant>
 #include <memory>
-#include <unordered_set>
 #include <unistd.h>
 #include <sys/types.h>
 #include <cstdio>
-#include <iostream>
 #include <vector>
 #include <atomic>
 #include <cassert>
@@ -20,7 +19,6 @@
 
 
 using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *>;
-using MatchSet = std::unordered_set<Match>;
 
 /*
  * maybe make this into a class? you could place the pid into
@@ -152,14 +150,12 @@ private:
     template<typename T>
     std::vector<Match> initial_scan(T value) {
         using Clock = std::chrono::high_resolution_clock;
-        std::vector<address_range> list = get_memory_ranges(_pid);
+        std::vector<address_range> list = get_memory_ranges(_pid, false);
         std::vector<Match> found;
         size_t total_size = get_address_range_list_size(list, false);
         size_t scanned_size = 0;
         for (address_range &current : list) {
-            // Do not scan vvar & vvar_clock, not permitted.
-            if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ &&
-                std::strncmp(current.name, "[vvar]", 4096) && std::strncmp(current.name, "[vvar_vclock]", 4096)) {
+            if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ) {
                 fprintf(stdout,
                         "Scanning %s: %p - %p (size: %zx)\n",
                         current.name,

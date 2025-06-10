@@ -1,9 +1,9 @@
 #ifndef MAPS_H
 #define MAPS_H
 
-#include <memory>
 #include <vector>
 #include <linux/limits.h>
+#include <sys/types.h>
 
 enum file_perms {
     PERM_READ       = 1 << 0,
@@ -54,7 +54,7 @@ struct address_range {
     char                            name[PATH_MAX];
 };
 
-std::vector<address_range> get_memory_ranges(pid_t pid);
+std::vector<address_range> get_memory_ranges(pid_t pid, bool include_exec);
 size_t get_address_range_list_size(std::vector<address_range> &ranges, bool include_exec);
 
 #endif /* MAPS_H */
