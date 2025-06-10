@@ -1,13 +1,29 @@
+#include <algorithm>
+#include <climits>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include <sys/types.h>
-
-#include <QDebug>
-
 #include "ProcessMemory.h"
 
+ssize_t ProcessMemory::read_process_memory_nosplit(pid_t pid, void *address, void *buffer, size_t n) {
+
+    iovec remote {.iov_base = address, .iov_len = n };
+    iovec local { .iov_base = buffer, .iov_len = n };
+    ssize_t amount_read = process_vm_readv(pid, &local, 1,
+        &remote, 1, 0);
+
+    if (amount_read == -1) {
+        char error[512] = {};
+        snprintf(error, sizeof(error),
+                 "ProcessMemory: process_vm_readv error %p - %p",
+                 address, static_cast<char *>(address) + n);
+        perror(error);
+    }
+
+    return amount_read;
+}
 
 /**
  * @brief read_process_memory reads `n` amount of bytes from a process

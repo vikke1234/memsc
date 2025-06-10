@@ -34,6 +34,8 @@ public:
     ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
 
     ssize_t read_process_memory(void *address, void *buffer, size_t n) const;
+	static ssize_t read_process_memory_nosplit(pid_t pid, void *address,
+                                            void *buffer, size_t n);
 
     decltype(matches) &get_matches() {
         return matches;
@@ -78,7 +80,7 @@ public:
             std::uintptr_t ptrdiff = end - start;
             ssize_t size = std::min(max_size, ptrdiff);
 
-            ssize_t nread = read_process_memory(start, buf.get(), size);
+            ssize_t nread = read_process_memory_nosplit(_pid, start, buf.get(), size);
             if (nread < 0 || nread != size) {
                 std::fprintf(
                     stderr,
@@ -134,7 +136,9 @@ private:
                         return;
                     }
                     U new_value{};
-                    [[maybe_unused]] ssize_t n = read_process_memory(addr, &new_value, sizeof(new_value));
+                    [[maybe_unused]] ssize_t n =
+                        read_process_memory_nosplit(_pid, addr, &new_value,
+                                                    sizeof(new_value));
                     assert(n == sizeof(T));
                     if (new_value != value) {
                         matches[i] = static_cast<T *>(nullptr);
