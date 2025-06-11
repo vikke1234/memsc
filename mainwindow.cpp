@@ -14,13 +14,12 @@
 #include <QMenuBar>
 #include <QAction>
 #include <QListWidget>
+#include <QMessageBox>
 #include <iostream>
 
 #include <assert.h>
 #include <qevent.h>
-#include <qlineedit.h>
 #include <unistd.h>
-#include <QMessageBox>
 
 
 static void toggleLayoutItems(QLayout *layout, bool enable) {
@@ -136,17 +135,18 @@ MainWindow::MainWindow(QWidget *parent)
 
 
 void MainWindow::show_pid_window() {
-	PidDialog *dialog = new PidDialog(this);
-	connect(dialog, &PidDialog::pidSelected, this, [this] (pid_t pid, const QString &name) {
-		scanner.pid(pid);
-		setWindowTitle(QString("MemSC - ") + name);
-		toggleLayoutItems(ui->memorySearchLayout, true);
-		ui->next_scan->setEnabled(false);
-		ui->search_bar->setFocus();
-		ui->memory_addresses->clearContents();
-		ui->saved_addresses->clearContents();
-	});
-	dialog->exec();
+    PidDialog *dialog = new PidDialog(this);
+    connect(dialog, &PidDialog::pidSelected, this, [this] (pid_t pid, const QString &name) {
+        scanner.pid(pid);
+        setWindowTitle(QString("MemSC - ") + name);
+        toggleLayoutItems(ui->memorySearchLayout, true);
+        ui->next_scan->setEnabled(false);
+        ui->search_bar->setFocus();
+        ui->memory_addresses->clearContents();
+        ui->saved_addresses->clearContents();
+        scanner.get_matches().clear();
+    });
+    dialog->exec();
 }
 
 MainWindow::~MainWindow() {
@@ -197,7 +197,7 @@ void MainWindow::create_menu() {
 }
 
 void MainWindow::create_connections() {
-    ui->attachButton->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_A));
+    ui->attachButton->setShortcut(QKeySequence(Qt::Key_F2));
     connect(ui->attachButton, &QPushButton::clicked, this,
                           &MainWindow::show_pid_window);
     connect(ui->memory_addresses, &QTableWidget::cellDoubleClicked,
