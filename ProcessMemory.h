@@ -41,7 +41,7 @@ public:
         return matches;
     }
 
-    bool scanning() {
+    bool scanning() const {
         return scanning_.load();
     }
 
