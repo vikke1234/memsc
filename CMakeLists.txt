@@ -29,11 +29,13 @@ target_compile_options(memsc PRIVATE
         -Wall
         -Wconversion
         -march=native
+        -falign-functions=64
+        -fno-omit-frame-pointer
 )
 
 target_link_options(memsc PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
-        $<$<CONFIG:Release>:-flto=auto>
+        $<$<CONFIG:Release>:-flto=auto -funroll-loops>
 )
 
 target_link_libraries(memsc PRIVATE Threads::Threads Qt5::Widgets ${CMAKE_THREAD_LIBS_INIT})
