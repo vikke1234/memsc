@@ -33,6 +33,7 @@ class ProcessMemory {
 public:
     ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
 
+    static void prefetch_area(pid_t pid, void *address, size_t size);
     ssize_t read_process_memory(void *address, void *buffer, size_t n) const;
 	static ssize_t read_process_memory_nosplit(pid_t pid, void *address,
                                             void *buffer, size_t n);

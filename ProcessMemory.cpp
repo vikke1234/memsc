@@ -7,6 +7,11 @@
 #include <sys/types.h>
 #include "ProcessMemory.h"
 
+void ProcessMemory::prefetch_area(pid_t pid, void *address, size_t size) {
+    iovec remote{.iov_base = address, .iov_len=size};
+    process_madvise(pid, &remote, 1, MADV_WILLNEED, 0);
+}
+
 ssize_t ProcessMemory::read_process_memory_nosplit(pid_t pid, void *address, void *buffer, size_t n) {
 
     iovec remote {.iov_base = address, .iov_len = n };
