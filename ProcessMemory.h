@@ -70,9 +70,10 @@ public:
         constexpr std::size_t max_size = IOV_MAX * 4096;
         constexpr std::size_t count = max_size / sizeof(T);
 
-        std::vector<T *> found;
+        alignas(64) std::vector<T *> found{};
+        found.reserve(range.length / 33);
 
-        std::unique_ptr<T[]> buf(new(std::align_val_t(64)) T[count]);
+        alignas(64) T buf[count];
         char *end = static_cast<char *>(range.start) + range.length;
 
         for (char *start = reinterpret_cast<char *>(range.start);
@@ -81,7 +82,7 @@ public:
             std::uintptr_t ptrdiff = end - start;
             ssize_t size = std::min(max_size, ptrdiff);
 
-            ssize_t nread = read_process_memory_nosplit(_pid, start, buf.get(), size);
+            ssize_t nread = read_process_memory_nosplit(_pid, start, buf, size);
             if (nread < 0 || nread != size) {
                 std::fprintf(
                     stderr,
@@ -91,8 +92,7 @@ public:
                 );
                 return found;
             }
-            auto addresses = filter_results(value, start, buf.get(), nread / sizeof(T));
-            found.insert(found.end(), addresses.begin(), addresses.end());
+            filter_results(found, value, start, buf, nread / sizeof(T));
         }
 
         return found;
@@ -154,39 +154,24 @@ private:
 
     template<typename T>
     std::vector<Match> initial_scan(T value) {
-        using Clock = std::chrono::high_resolution_clock;
         std::vector<address_range> list = get_memory_ranges(_pid, false);
         std::vector<Match> found;
         size_t total_size = get_address_range_list_size(list, false);
         size_t scanned_size = 0;
         for (address_range &current : list) {
             if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ) {
-                fprintf(stdout,
-                        "Scanning %s: %p - %p (size: %zx)\n",
-                        current.name,
-                        current.start,
-                        static_cast<char *>(current.start) + current.length,
-                        current.length);
 
                 const size_t region_bytes = current.length;
                 const size_t num_addresses = region_bytes / sizeof(T);
 
-                auto t0 = Clock::now();
                 auto current_matches = scan_range<T>(current, value);
                 found.insert(found.end(), current_matches.begin(), current_matches.end());
 
-                auto t1 = Clock::now();
-
-                std::chrono::duration<double> elapsed = t1 - t0;
-                double seconds = elapsed.count();
-                fprintf(stdout,
-                        "    → Scanned %zu addresses in %.5f s\n",
-                        num_addresses,
-                        seconds);
                 scanned_size += current.length;
                 progressCallback_(scanned_size, total_size);
             }
         }
+        printf("Scanned %'lu bytes (%.02f GB)\n", total_size, double(total_size) / 1e9);
         return found;
     }
 
@@ -203,27 +188,24 @@ private:
      * @return vector containing addresses that match the value
      */
     template<typename T>
-    std::vector<T *> filter_results(T value, char *start, T *buf, size_t count) {
-        std::vector<T *> found{};
+    void filter_results(std::vector<T*> &found, T value, char *start, T *buf, size_t count) {
         // Expect ~33% hit-rate
-        found.reserve(count / 33);
         size_t i = 0;
 
         if constexpr (__AVX2__) {
-            size_t aligned_end = (count / 8) * 8; // 8 lanes of int32_t
+            constexpr size_t lanes = 8;
+            size_t aligned_end = (count / lanes) * lanes; // 8 lanes of int32_t
             const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
 
-            for (; i < aligned_end; i += 8) {
-                if (i % 4096 == 0) {
-                    __builtin_prefetch(buf + i + 4096);
-                }
-
+            // In order to avoid modulo
+            for (; i < aligned_end; i += lanes) {
                 __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(&buf[i]));
                 __m256i cmp = _mm256_cmpeq_epi32(chunk, val_vec);
                 int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp));
-                while (mask) {
-                    int lane = __builtin_ctz(mask); // [0..7]
-                    found.push_back(reinterpret_cast<T *>(start + (i + static_cast<size_t>(lane)) * sizeof(T)));
+                char* base = start + i * sizeof(T);
+                while (mask) [[unlikely]] {
+                    unsigned int lane = __builtin_ctz(mask); // [0..7]
+                    found.push_back(reinterpret_cast<T *>(base + lane * sizeof(T)));
                     mask &= (mask - 1);
                 }
             }
@@ -237,6 +219,5 @@ private:
                 found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
             }
         }
-        return found;
     }
 };
