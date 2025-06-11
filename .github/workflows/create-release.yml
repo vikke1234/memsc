@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt install qtbase5-dev
+        run: sudo apt-get install qtbase5-dev
 
       - name: Configure CMake
         run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt install qtbase5-dev
+        run: sudo apt-get install -qq qtbase5-dev
 
       - name: Configure CMake
         run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
@@ -51,7 +51,7 @@ jobs:
           mkdir -p release
           # Copy the memsc binary
           cp ${{ github.workspace }}/build/memsc release/ || echo "Warning: memsc not found"
-          tar czf memsc-${{ github.ref_name }}.tar.gz -C release .
+          tar czf memsc-${{ github.ref_name }}.tar.gz release
 
       - name: Create GitHub Release
         id: create_release
