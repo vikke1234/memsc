@@ -93,6 +93,7 @@ MainWindow::MainWindow(QWidget *parent)
         }, Qt::QueuedConnection);
     });
     ui->next_scan->setEnabled(false);
+    ui->value_type->setEnabled(false);
     //MemoryWidget *memory_addresses = new MemoryWidget(this);
     ui->memory_addresses->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->memory_addresses->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -141,6 +142,7 @@ void MainWindow::show_pid_window() {
         setWindowTitle(QString("MemSC - ") + name);
         toggleLayoutItems(ui->memorySearchLayout, true);
         ui->next_scan->setEnabled(false);
+        ui->value_type->setEnabled(false);
         ui->search_bar->setFocus();
         ui->memory_addresses->clearContents();
         ui->saved_addresses->clearContents();
@@ -299,7 +301,7 @@ void MainWindow::handle_new_scan() {
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
         ui->next_scan->setEnabled(false);
-        ui->value_type->setEnabled(true);
+        //ui->value_type->setEnabled(true);
     } else {
         if(ui->search_bar->text().isEmpty() || scanner.scanning()) {
             return;
