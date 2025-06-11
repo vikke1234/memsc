@@ -1,3 +1,4 @@
+#include "ProcessMemory.h"
 #include "ui_mainwindow.h"
 #include "mainwindow.h"
 #include "ui/MapsDialog.h"
@@ -313,6 +314,52 @@ void MainWindow::handle_new_scan() {
     }
 }
 
+template<typename T>
+void scan_for_type(ProcessMemory *scanner, T value, MainWindow *mw, Ui::MainWindow *ui) {
+    scanner->scan<T>(value);
+    QMetaObject::invokeMethod(mw, [scanner, value, ui]() {
+        constexpr int max_rows = 10000;
+        auto &matches = scanner->get_matches();
+        /* start thread here somewhere to monitor the values later if they change?
+         * it's probably very cpu expensive though */
+        ui->memory_addresses->clearContents();
+        ui->memory_addresses->setRowCount(0);
+        int row = 0;
+
+        for(size_t i = 0; i < matches.size(); i++) {
+            char str_address[64] = {};
+            void *match = matches[i];
+
+            if (match == nullptr) {
+                continue;
+            }
+            matches[row] = match;
+
+            if (row >= max_rows) {
+                row++;
+                continue;
+            }
+
+            snprintf(str_address, 64, "%p", match);
+            T val{};
+            [[maybe_unused]] ssize_t n = scanner->read_process_memory(match, &val, sizeof(val));
+            assert(n == sizeof(val));
+            ui->memory_addresses->insertRow(row);
+            ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, reinterpret_cast<T*>(match)));
+            ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
+            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
+            row++;
+        }
+        matches.resize(row);
+
+        char found[32] = {0};
+        snprintf(found, 32, "Found: %d", row);
+        ui->amount_found->setText(found);
+        ui->next_scan->setEnabled(true);
+    }, Qt::QueuedConnection);
+
+
+}
 void MainWindow::handle_next_scan() {
     if(ui->search_bar->text().isEmpty()) {
         return;
@@ -326,7 +373,7 @@ void MainWindow::handle_next_scan() {
     case 2: /* 2 Bytes */
         break;
     case 3: /* 4 Bytes */
-        scanner.scan<std::uint32_t>(ui->search_bar->text().toInt());
+            scan_for_type<std::uint32_t>(&scanner, ui->search_bar->text().toInt(), this, ui);
         break;
     case 4: /* 8 Bytes */
         break;
@@ -343,50 +390,6 @@ void MainWindow::handle_next_scan() {
         assert(false);
         return;
     }
-
-    QMetaObject::invokeMethod(this, [this]() {
-        constexpr int max_rows = 10000;
-        auto &matches = scanner.get_matches();
-        /* start thread here somewhere to monitor the values later if they change?
-         * it's probably very cpu expensive though */
-        ui->memory_addresses->clearContents();
-        ui->memory_addresses->setRowCount(0);
-        int row = 0;
-
-        for(size_t i = 0; i < matches.size(); i++) {
-            char str_address[64] = {};
-            Match &match = matches[i];
-
-            std::visit([&](auto *ptr) {
-                if (ptr == nullptr) {
-                    return;
-                }
-                matches[row] = ptr;
-
-                if (row >= max_rows) {
-                    row++;
-                    return;
-                }
-
-                snprintf(str_address, 64, "%p", ptr);
-                std::remove_pointer_t<decltype(ptr)> val{};
-                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &val, sizeof(val));
-                assert(n == sizeof(val));
-                ui->memory_addresses->insertRow(row);
-                ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, match));
-                ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
-                ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
-                // Restructure the array to not have a bunch of "dead" slots
-                row++;
-            }, match);
-        }
-        matches.resize(row);
-
-        char found[32] = {0};
-        snprintf(found, 32, "Found: %d", row);
-        ui->amount_found->setText(found);
-        ui->next_scan->setEnabled(true);
-    }, Qt::QueuedConnection);
 
 }
 

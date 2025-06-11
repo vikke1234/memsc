@@ -6,6 +6,8 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
+#include <prfchiintrin.h>
+#include <sys/mman.h>
 #include <variant>
 #include <memory>
 #include <unistd.h>
@@ -26,7 +28,7 @@ using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *>;
  */
 class ProcessMemory {
     pid_t _pid{};
-    std::vector<Match> matches{};
+    std::vector<void *> matches{};
     std::atomic<bool> scanning_{};
     std::function<void(size_t, size_t)> progressCallback_{};
 
@@ -65,15 +67,16 @@ public:
      * @return
      */
     template<typename T>
-    std::vector<T *> scan_range(const address_range &range, const T value) {
+    void scan_range(std::vector<void *>& found, const address_range &range, const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
-        constexpr std::size_t max_size = IOV_MAX * 4096;
+        constexpr std::size_t max_size = 0x10000000;
         constexpr std::size_t count = max_size / sizeof(T);
 
-        alignas(64) std::vector<T *> found{};
-        found.reserve(range.length / 33);
-
-        alignas(64) T buf[count];
+        size_t bufsize = std::min(range.length / sizeof(T), count);
+        alignas(64) std::unique_ptr<T[]> buf = std::make_unique<T[]>(bufsize);
+        if (range.length > 4096) {
+            prefetch_area(_pid, range.start, range.length);
+        }
         char *end = static_cast<char *>(range.start) + range.length;
 
         for (char *start = reinterpret_cast<char *>(range.start);
@@ -82,7 +85,7 @@ public:
             std::uintptr_t ptrdiff = end - start;
             ssize_t size = std::min(max_size, ptrdiff);
 
-            ssize_t nread = read_process_memory_nosplit(_pid, start, buf, size);
+            ssize_t nread = read_process_memory_nosplit(_pid, start, buf.get(), size);
             if (nread < 0 || nread != size) {
                 std::fprintf(
                     stderr,
@@ -90,12 +93,10 @@ public:
                     static_cast<void *>(start),
                     std::strerror(errno)
                 );
-                return found;
+                return;
             }
-            filter_results(found, value, start, buf, nread / sizeof(T));
+            filter_results(found, value, start, buf.get(), nread / sizeof(T));
         }
-
-        return found;
     }
 
     /**
@@ -104,7 +105,7 @@ public:
      * @return returns the matches it finds
      */
     template<typename T>
-    decltype(matches) &scan(T value) {
+    void scan(T value) {
         scanning_ = true;
         using Clock = std::chrono::high_resolution_clock;
 
@@ -122,7 +123,6 @@ public:
         fprintf(stdout, "Total scan time: %.3f s\n", total_seconds);
         fprintf(stdout, "matches: %lu\n", matches.size());
         scanning_ = false;
-        return matches;
     }
 
 private:
@@ -130,42 +130,33 @@ private:
     void scan_found(T value) {
         std::size_t found = 0;
         for (std::size_t i = 0; i < matches.size(); ++i) {
-            auto &match = matches[i];
-            std::visit([&]<typename U>(U *addr) {
-                if constexpr (std::is_same_v<T, U>) {
-                    if (addr == nullptr) {
-                        return;
-                    }
-                    U new_value{};
-                    [[maybe_unused]] ssize_t n =
-                        read_process_memory_nosplit(_pid, addr, &new_value,
-                                                    sizeof(new_value));
-                    assert(n == sizeof(T));
-                    if (new_value != value) {
-                        matches[i] = static_cast<T *>(nullptr);
-                    } else {
-                        matches[found++] = addr;
-                    }
-                }
-            }, match);
+            void *addr = matches[i];
+            if (addr == nullptr) {
+                return;
+            }
+            T new_value{};
+            [[maybe_unused]] ssize_t n =
+                read_process_memory_nosplit(_pid, addr, &new_value,
+                                            sizeof(new_value));
+            assert(n == sizeof(T));
+            if (new_value != value) {
+                matches[i] = static_cast<T *>(nullptr);
+            } else {
+                matches[found++] = addr;
+            }
         }
         matches.resize(found);
     }
 
     template<typename T>
-    std::vector<Match> initial_scan(T value) {
+    std::vector<void *> initial_scan(T value) {
         std::vector<address_range> list = get_memory_ranges(_pid, false);
-        std::vector<Match> found;
+        std::vector<void *> found;
         size_t total_size = get_address_range_list_size(list, false);
         size_t scanned_size = 0;
         for (address_range &current : list) {
             if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ) {
-
-                const size_t region_bytes = current.length;
-                const size_t num_addresses = region_bytes / sizeof(T);
-
-                auto current_matches = scan_range<T>(current, value);
-                found.insert(found.end(), current_matches.begin(), current_matches.end());
+                scan_range<T>(found, current, value);
 
                 scanned_size += current.length;
                 progressCallback_(scanned_size, total_size);
@@ -181,6 +172,7 @@ private:
      * TODO: this could probably be an actual pattern matching library.
      *
      * @tparam T Type of value to look for
+     * @param found vector of currently found results
      * @param value value to look for
      * @param start start of the memory range
      * @param buf buffer containing read values
@@ -188,7 +180,7 @@ private:
      * @return vector containing addresses that match the value
      */
     template<typename T>
-    void filter_results(std::vector<T*> &found, T value, char *start, T *buf, size_t count) {
+    void filter_results(std::vector<void*> &found, T value, char *start, T *buf, size_t count) {
         // Expect ~33% hit-rate
         size_t i = 0;
 
@@ -199,11 +191,14 @@ private:
 
             // In order to avoid modulo
             for (; i < aligned_end; i += lanes) {
+                if (i % (4096 / sizeof(T)) == 0) {
+                    _mm_prefetch(&buf[i + (4096 / sizeof(T))], _MM_HINT_T0);
+                }
                 __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(&buf[i]));
                 __m256i cmp = _mm256_cmpeq_epi32(chunk, val_vec);
                 int mask = _mm256_movemask_ps(_mm256_castsi256_ps(cmp));
                 char* base = start + i * sizeof(T);
-                while (mask) [[unlikely]] {
+                while (mask) {
                     unsigned int lane = __builtin_ctz(mask); // [0..7]
                     found.push_back(reinterpret_cast<T *>(base + lane * sizeof(T)));
                     mask &= (mask - 1);
