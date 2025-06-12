@@ -1,27 +1,84 @@
-#include "ProcessMemory.h"
-#include "ui_mainwindow.h"
 #include "mainwindow.h"
+#include "ProcessMemory.h"
 #include "ui/MapsDialog.h"
-#include "ui/MatchTableItem.h"
 #include "ui/PidDialog.h"
+#include "ui/MatchTableItem.h"
+#include "ui_mainwindow.h"
 
-#include <QtDebug>
-#include <QShortcut>
-#include <QComboBox>
-#include <QTableWidgetItem>
-#include <QInputDialog>
-#include <QScrollBar>
-#include <QKeyEvent>
-#include <QMenuBar>
+
+
 #include <QAction>
+#include <QComboBox>
 #include <QListWidget>
+#include <QMenuBar>
 #include <QMessageBox>
-#include <iostream>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QScrollBar>
+#include <QShortcut>
+#include <QTableWidgetItem>
+#include <QTimer>
+#include <QtConcurrent/QtConcurrent>
+#include <QtDebug>
 
 #include <assert.h>
-#include <qevent.h>
 #include <unistd.h>
 
+template<typename T>
+void populate_table_after_scan(ProcessMemory &scanner,
+                               QTableWidget *memory_addresses,
+                               const QString &searchText,
+                               QLabel *amount_found_label,
+                               QPushButton *next_scan_button)
+{
+    constexpr int max_rows = 10000;
+    auto &matches = scanner.get_matches();
+    memory_addresses->clearContents();
+    memory_addresses->setRowCount(0);
+    int row = 0;
+    for (size_t i = 0; i < matches.size(); ++i) {
+        void *match = matches[i];
+        if (!match) continue;
+        if (row >= max_rows) { row++; continue; }
+        char str_address[64];
+        snprintf(str_address, sizeof(str_address), "%p", match);
+        T val{};
+        [[maybe_unused]] ssize_t n = scanner.read_process_memory(match, &val, sizeof(val));
+        assert(n == sizeof(val));
+        memory_addresses->insertRow(row);
+        memory_addresses->setItem(row, 0, new MatchTableItem(str_address, reinterpret_cast<T*>(match)));
+        memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
+        memory_addresses->setItem(row, 2, new QTableWidgetItem(searchText));
+
+        row++;
+    }
+    matches.resize(row);
+    amount_found_label->setText(QString("Found: %1").arg(row));
+    next_scan_button->setEnabled(true);
+}
+
+template<typename T>
+void start_scan_and_populate(MainWindow *self, ProcessMemory *scanner,
+                             QTableWidget *memory_addresses,
+                             const QString &searchText,
+                             QLabel *amount_found_label,
+                             QPushButton *next_scan_button,
+                             T parsedValue)
+{
+    auto future = QtConcurrent::run([scanner, parsedValue] {
+        scanner->scan(parsedValue);
+    });
+
+    auto *watcher = new QFutureWatcher<void>(self);
+    QObject::connect(watcher, &QFutureWatcher<void>::finished, self,
+        [self, scanner, memory_addresses, searchText, amount_found_label, next_scan_button, watcher]() {
+            // UI update runs here on GUI thread
+            populate_table_after_scan<T>(*scanner, memory_addresses, searchText,
+                                         amount_found_label, next_scan_button);
+            watcher->deleteLater();
+        });
+    watcher->setFuture(future);
+}
 
 static void toggleLayoutItems(QLayout *layout, bool enable) {
     for (int i = 0; i < layout->count(); ++i) {
@@ -81,10 +138,12 @@ static void parse_cstr(void *dest, const char *src, size_t size, int type) {
  * 6. a better ui for pointers, like cheat engine
  * */
 MainWindow::MainWindow(QWidget *parent)
-    : QWidget(parent)
-    , ui(new Ui::MainWindow)
-{
-    ui->setupUi(this);
+    : QWidget(parent), ui(new Ui::MainWindow),
+      value_update_timer(new QTimer(this)),
+      pos_only{new QRegularExpressionValidator(QRegularExpression("\\d*"), this)},
+      pos_neg{new QRegularExpressionValidator(QRegularExpression("[+-]?\\d*"),
+                                              this)} {
+  ui->setupUi(this);
 
     ui->progressBar->setRange(0, 100);
     scanner.setProgressCallback(
@@ -128,7 +187,6 @@ MainWindow::MainWindow(QWidget *parent)
     create_connections();
     ui->search_bar->setValidator(this->pos_only);
     ui->saved_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    QtConcurrent::run(this, &MainWindow::saved_address_thread);
     toggleLayoutItems(ui->memorySearchLayout, false);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -214,6 +272,14 @@ void MainWindow::create_connections() {
                      this, &MainWindow::handle_next_scan);
     connect(ui->saved_addresses, &QTableWidget::cellDoubleClicked, this, &MainWindow::handle_double_click_saved);
     connect(this, &MainWindow::value_changed, this, &MainWindow::saved_address_change);
+    // TODO integrate settings
+    connect(value_update_timer, &QTimer::timeout, [this] {
+        update_table(ui->saved_addresses, 0, 1);
+        update_table(ui->memory_addresses, 0, 1);
+    });
+    value_update_timer->setInterval(100);
+    value_update_timer->start();
+
     connect(ui->search_bar, &QLineEdit::returnPressed, this, [this]() {
     if (ui->next_scan->isEnabled())
         handle_next_scan();
@@ -308,89 +374,66 @@ void MainWindow::handle_new_scan() {
             return;
         }
         ui->value_type->setEnabled(false);
-        QtConcurrent::run([this](){
-            handle_next_scan();
-        });
+        handle_next_scan();
     }
 }
 
-template<typename T>
-void scan_for_type(ProcessMemory *scanner, T value, MainWindow *mw, Ui::MainWindow *ui) {
-    scanner->scan<T>(value);
-    QMetaObject::invokeMethod(mw, [scanner, value, ui]() {
-        constexpr int max_rows = 10000;
-        auto &matches = scanner->get_matches();
-        /* start thread here somewhere to monitor the values later if they change?
-         * it's probably very cpu expensive though */
-        ui->memory_addresses->clearContents();
-        ui->memory_addresses->setRowCount(0);
-        int row = 0;
-
-        for(size_t i = 0; i < matches.size(); i++) {
-            char str_address[64] = {};
-            void *match = matches[i];
-
-            if (match == nullptr) {
-                continue;
-            }
-            matches[row] = match;
-
-            if (row >= max_rows) {
-                row++;
-                continue;
-            }
-
-            snprintf(str_address, 64, "%p", match);
-            T val{};
-            [[maybe_unused]] ssize_t n = scanner->read_process_memory(match, &val, sizeof(val));
-            assert(n == sizeof(val));
-            ui->memory_addresses->insertRow(row);
-            ui->memory_addresses->setItem(row, 0, new MatchTableItem(str_address, reinterpret_cast<T*>(match)));
-            ui->memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
-            ui->memory_addresses->setItem(row, 2, new QTableWidgetItem(ui->search_bar->text()));
-            row++;
-        }
-        matches.resize(row);
-
-        char found[32] = {0};
-        snprintf(found, 32, "Found: %d", row);
-        ui->amount_found->setText(found);
-        ui->next_scan->setEnabled(true);
-    }, Qt::QueuedConnection);
-
-
-}
 void MainWindow::handle_next_scan() {
     if(ui->search_bar->text().isEmpty()) {
         return;
     }
 
-    switch(ui->value_type->currentIndex()) {
-    case 0: /* Binary */
-        break;
-    case 1: /* Byte */
-        break;
-    case 2: /* 2 Bytes */
-        break;
-    case 3: /* 4 Bytes */
-            scan_for_type<std::uint32_t>(&scanner, ui->search_bar->text().toInt(), this, ui);
-        break;
-    case 4: /* 8 Bytes */
-        break;
-    case 5: /* Float */
-        break;
-    case 6: /* Double */
-        break;
-    case 7: /* String */
-        break;
-    case 9: /* Array of Byte */
-        break;
-    default:
-        /* should never get here... */
-        assert(false);
-        return;
+    int idx = ui->value_type->currentIndex();
+    const QString searchText = ui->search_bar->text();
+    switch (idx) {
+        case 1: { // Byte -> uint8_t
+            bool ok = false;
+            uint8_t v = static_cast<uint8_t>(searchText.toUInt(&ok));
+            if (!ok) return;
+            start_scan_and_populate<uint8_t>(this, &scanner,
+                                             ui->memory_addresses, searchText,
+                                             ui->amount_found, ui->next_scan, v
+                                             );
+            break;
+        }
+        case 2: { // 2 Bytes -> uint16_t
+            bool ok = false;
+            uint16_t v = static_cast<uint16_t>(searchText.toUInt(&ok));
+            if (!ok) return;
+            start_scan_and_populate<uint16_t>(this, &scanner,
+                                              ui->memory_addresses, searchText,
+                                              ui->amount_found, ui->next_scan, v);
+            break;
+        }
+        case 3: { // 4 Bytes -> uint32_t
+            bool ok = false;
+            uint32_t v = searchText.toUInt(&ok);
+            if (!ok) return;
+            start_scan_and_populate<uint32_t>(this, &scanner,
+                                              ui->memory_addresses, searchText,
+                                              ui->amount_found, ui->next_scan, v);
+            break;
+        }
+        case 4: { // 8 Bytes -> uint64_t
+            bool ok = false;
+            uint64_t v = searchText.toULongLong(&ok);
+            if (!ok) return;
+            start_scan_and_populate<uint64_t>(this, &scanner,
+                                              ui->memory_addresses, searchText,
+                                              ui->amount_found, ui->next_scan, v);
+            break;
+        }
+        case 5: { // Float
+            break;
+        }
+        case 6: { // Double
+            break;
+        }
+        default:
+            /* should never get here... */
+            assert(false);
+            return;
     }
-
 }
 
 void MainWindow::handle_double_click_saved(int row,int column) {
@@ -449,25 +492,10 @@ void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col)
     }
 }
 
-/* https://forum.qt.io/topic/88895/refreshing-content-of-qtablewidget/5 */
-void MainWindow::saved_address_thread() {
-    std::atomic<bool> has_run = true;
-    while (!this->quit) {
-        while (!has_run.load() && !this->quit) {
-            usleep(100);
-        }
-        has_run = false;
-        QMetaObject::invokeMethod(this, [this, &has_run]() {
-            update_table(ui->saved_addresses, 0, 1);
-            update_table(ui->memory_addresses, 0, 1);
-            has_run = true;
-        }, Qt::QueuedConnection);
-    }
-}
-
 /**
  * @brief MainWindow::handle_value_changed
- * @param segment the piece in memory that has changed value, it should also have been updated so you don't need to re-read the memory
+ * @param segment the piece in memory that has changed value, it should also
+ * have been updated so you don't need to re-read the memory
  * @param row which row it's on
  */
 void MainWindow::saved_address_change(address_t *segment, int row) {

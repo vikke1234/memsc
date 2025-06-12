@@ -66,7 +66,7 @@ bool PidDialog::eventFilter(QObject *watched, QEvent *event) {
 	{
 		listWidget->setFocus();
 		// repost the same arrow key event so the list will act on it
-		auto *clone = new QKeyEvent(*ke);
+		auto *clone = ke->clone();
 		QCoreApplication::postEvent(listWidget, clone);
 		return true;
 	}
@@ -92,7 +92,7 @@ bool PidDialog::eventFilter(QObject *watched, QEvent *event) {
 	// 3) In the list: any other key → send back to search so they can keep typing
 	if (watched == listWidget) {
 		search->setFocus();
-		auto *clone = new QKeyEvent(*ke);
+		auto *clone = ke->clone();
 		QCoreApplication::postEvent(search, clone);
 		return true;
 	}

@@ -20,7 +20,7 @@
 #include <functional>
 
 
-using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *>;
+using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std::uint64_t *>;
 
 /*
  * maybe make this into a class? you could place the pid into

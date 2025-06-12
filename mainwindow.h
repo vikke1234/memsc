@@ -2,11 +2,9 @@
 #define MAINWINDOW_H
 
 #include "ProcessMemory.h"
-#include "ui/MapsDialog.h"
 
 #include <QMainWindow>
 #include <QTableWidget>
-#include <QtConcurrent/QtConcurrent>
 
 #include <unordered_map>
 #include <thread>
@@ -24,6 +22,11 @@ struct address_t {
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+class QRegularExpressionValidator;
+class MapsDialog;
+class QMenuBar;
+class QMenu;
 
 class MainWindow : public QWidget
 {
@@ -45,26 +48,6 @@ public slots:
     void saved_address_change(address_t *segment, int row);
 
 private:
-    QMenuBar    *menubar{};
-    QMenu       *filemenu{};
-	MapsDialog  *mapsDialog{};
-    QRegExpValidator *pos_only = new QRegExpValidator(QRegExp("\\d*"), this);
-    QRegExpValidator *pos_neg = new QRegExpValidator(QRegExp("[+-]?\\d*"), this);
-
-    bool quit = false;
-    std::unordered_map<void *, address_t*> saved_address_values;
-    std::thread saved_address_scanner;
-    ProcessMemory scanner;
-    Ui::MainWindow *ui;
-
-    void create_menu();
-    void create_connections();
-    void saved_address_thread();
-    void show_pid_window();
-    void update_table(QTableWidget *widget, int addr_row, int value_row);
-	void createMapsDialog(pid_t pid);
-	void locate_in_maps(uintptr_t ptr);
-
     enum saved_address_cells {
         SAVED_ADDRESS_CHECKBOX = 0,
         SAVED_ADDRESS_DESCRIPTION,
@@ -73,5 +56,24 @@ private:
         SAVED_ADDRESS_VALUE
     };
 
+    Ui::MainWindow *ui;
+    QMenuBar    *menubar{};
+    QMenu       *filemenu{};
+	QTimer      *value_update_timer{};
+	MapsDialog  *mapsDialog{};
+    QRegularExpressionValidator *pos_only;
+    QRegularExpressionValidator *pos_neg;
+
+    bool quit = false;
+    std::unordered_map<void *, address_t*> saved_address_values;
+    std::thread saved_address_scanner;
+    ProcessMemory scanner;
+
+    void create_menu();
+    void create_connections();
+    void show_pid_window();
+    void update_table(QTableWidget *widget, int addr_row, int value_row);
+    void createMapsDialog(pid_t pid);
+    void locate_in_maps(uintptr_t ptr);
 };
 #endif // MAINWINDOW_H
