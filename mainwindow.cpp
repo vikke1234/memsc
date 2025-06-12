@@ -5,8 +5,6 @@
 #include "ui/MatchTableItem.h"
 #include "ui_mainwindow.h"
 
-
-
 #include <QAction>
 #include <QComboBox>
 #include <QListWidget>
@@ -22,6 +20,7 @@
 #include <QtDebug>
 
 #include <assert.h>
+#include <qobjectdefs.h>
 #include <unistd.h>
 
 template<typename T>
@@ -42,9 +41,12 @@ void populate_table_after_scan(ProcessMemory &scanner,
         if (row >= max_rows) { row++; continue; }
         char str_address[64];
         snprintf(str_address, sizeof(str_address), "%p", match);
+
         T val{};
-        [[maybe_unused]] ssize_t n = scanner.read_process_memory(match, &val, sizeof(val));
+        [[maybe_unused]]
+        ssize_t n = scanner.read_process_memory(match, &val, sizeof(val));
         assert(n == sizeof(val));
+
         memory_addresses->insertRow(row);
         memory_addresses->setItem(row, 0, new MatchTableItem(str_address, reinterpret_cast<T*>(match)));
         memory_addresses->setItem(row, 1, new QTableWidgetItem(QString::number(val)));
@@ -70,9 +72,7 @@ void start_scan_and_populate(MainWindow *self, ProcessMemory *scanner,
     });
 
     auto *watcher = new QFutureWatcher<void>(self);
-    QObject::connect(watcher, &QFutureWatcher<void>::finished, self,
-        [self, scanner, memory_addresses, searchText, amount_found_label, next_scan_button, watcher]() {
-            // UI update runs here on GUI thread
+    QObject::connect(watcher, &QFutureWatcher<void>::finished, self, [self, scanner, memory_addresses, searchText, amount_found_label, next_scan_button, watcher]() {
             populate_table_after_scan<T>(*scanner, memory_addresses, searchText,
                                          amount_found_label, next_scan_button);
             watcher->deleteLater();
@@ -463,8 +463,11 @@ void MainWindow::delete_window() {
 void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col) {
     // Scans forward this many rows, unnecessary to go further down
     constexpr int scan_forward = 50;
+    int row = std::max(widget->verticalScrollBar()->value() - scan_forward, 0);
+    int end = std::min(widget->verticalScrollBar()->value() + scan_forward,
+                       widget->rowCount());
     // Look around "current row", i.e. highest one
-    for (int row = std::max(widget->verticalScrollBar()->value() - scan_forward, 0); row < widget->verticalScrollBar()->value() + scan_forward; row++) {
+    for (; row < end; row++) {
         QTableWidgetItem *addr_item = widget->item(row, addr_col);
         if (addr_item == nullptr) {
             continue;
