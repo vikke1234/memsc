@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.16)
 
 project(memsc LANGUAGES CXX)
 
+if (WIN32 OR APPLE)
+    message(FATAL_ERROR "MemSC is only supported on Linux currently")
+endif()
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -21,11 +25,17 @@ add_executable(memsc
     mainwindow.ui
     ProcessMemory.cpp
     maps.cpp
-    ui/MapsDialog.h
     ui/MapsDialog.cpp
-	ui/PidDialog.cpp
+    ui/PidDialog.cpp
+    ui/Settings.cpp
 )
 
+target_precompile_headers(memsc PRIVATE
+    ui/MapsDialog.h
+    ui/PidDialog.h
+    ui/Settings.h
+    mainwindow.h
+)
 target_compile_options(memsc PRIVATE
         -Wall
         -Wconversion
@@ -39,4 +49,7 @@ target_link_options(memsc PRIVATE
         $<$<CONFIG:Release>:-flto=auto -funroll-loops>
 )
 
-target_link_libraries(memsc PRIVATE Threads::Threads Qt6::Widgets ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(memsc PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui
+                                    Threads::Threads)
+
+install(TARGETS memsc RUNTIME DESTINATION bin)

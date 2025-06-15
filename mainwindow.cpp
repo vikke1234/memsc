@@ -3,6 +3,7 @@
 #include "ui/MapsDialog.h"
 #include "ui/PidDialog.h"
 #include "ui/MatchTableItem.h"
+#include "ui/Settings.h"
 #include "ui_mainwindow.h"
 
 #include <QAction>
@@ -20,7 +21,8 @@
 #include <QtDebug>
 
 #include <assert.h>
-#include <qobjectdefs.h>
+#include <QDebug>
+#include <QSettings>
 #include <unistd.h>
 
 template<typename T>
@@ -143,7 +145,7 @@ MainWindow::MainWindow(QWidget *parent)
       pos_only{new QRegularExpressionValidator(QRegularExpression("\\d*"), this)},
       pos_neg{new QRegularExpressionValidator(QRegularExpression("[+-]?\\d*"),
                                               this)} {
-  ui->setupUi(this);
+    ui->setupUi(this);
 
     ui->progressBar->setRange(0, 100);
     scanner.setProgressCallback(
@@ -191,22 +193,55 @@ MainWindow::MainWindow(QWidget *parent)
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     ui->saved_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+
+    load_settings();
+
+    value_update_timer->start();
 }
 
+void MainWindow::load_settings() {
+    QSettings settings{"Memory Scanner", "Memsc"};
+    bool ok = false;
+    qDebug() << "Updating settings\n";
+    value_update_timer->setInterval(
+        settings.value("General/update-interval", 100).toInt());
+    std::size_t size =
+        settings.value("General/scan-block-size").toULongLong(&ok);
+    scanner.max_read_size(size);
+
+    pid_t pid = pid_t{settings.value("General/auto-attach", -1).toInt(&ok)};
+    if (scanner.pid() < 0 && ok && pid >= 0) {
+        QString commPath = QString("/proc/%1/comm").arg(pid);
+        QFile commFile(commPath);
+        QString procName = tr("<unknown>");
+        if (commFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&commFile);
+            procName = in.readLine().trimmed();
+        }
+
+        attach_to_process(pid, QString("%1: %2").arg(pid).arg(procName));
+    }
+}
+
+void MainWindow::attach_to_process(pid_t pid, const QString name) {
+    if (!scanner.pid(pid)) {
+        return;
+    }
+    qDebug() << "Attaching to: " << pid << "\n";
+    setWindowTitle(QString("MemSC - ") + name);
+    toggleLayoutItems(ui->memorySearchLayout, true);
+    ui->next_scan->setEnabled(false);
+    ui->value_type->setEnabled(false);
+    ui->search_bar->setFocus();
+    ui->memory_addresses->clearContents();
+    ui->saved_addresses->clearContents();
+    scanner.get_matches().clear();
+}
 
 void MainWindow::show_pid_window() {
     PidDialog *dialog = new PidDialog(this);
-    connect(dialog, &PidDialog::pidSelected, this, [this] (pid_t pid, const QString &name) {
-        scanner.pid(pid);
-        setWindowTitle(QString("MemSC - ") + name);
-        toggleLayoutItems(ui->memorySearchLayout, true);
-        ui->next_scan->setEnabled(false);
-        ui->value_type->setEnabled(false);
-        ui->search_bar->setFocus();
-        ui->memory_addresses->clearContents();
-        ui->saved_addresses->clearContents();
-        scanner.get_matches().clear();
-    });
+    connect(dialog, &PidDialog::pidSelected, this,
+            &MainWindow::attach_to_process);
     dialog->exec();
 }
 
@@ -251,6 +286,14 @@ void MainWindow::create_menu() {
 
 		createMapsDialog(pid);
     });
+
+    QAction *settings = new QAction("Settings", filemenu);
+    connect(settings, &QAction::triggered, [this] {
+        SettingsDialog *diag = new SettingsDialog(this);
+        connect(diag, &SettingsDialog::settings_changed, this, &MainWindow::load_settings);
+        diag->exec();
+    });
+    filemenu->addAction(settings);
     tools->addAction(maps);
     menubar->addMenu(filemenu);
     menubar->addMenu(tools);
@@ -258,6 +301,7 @@ void MainWindow::create_menu() {
 }
 
 void MainWindow::create_connections() {
+    QSettings settings{"Memsc"};
     ui->attachButton->setShortcut(QKeySequence(Qt::Key_F2));
     connect(ui->attachButton, &QPushButton::clicked, this,
                           &MainWindow::show_pid_window);
@@ -277,8 +321,7 @@ void MainWindow::create_connections() {
         update_table(ui->saved_addresses, 0, 1);
         update_table(ui->memory_addresses, 0, 1);
     });
-    value_update_timer->setInterval(100);
-    value_update_timer->start();
+
 
     connect(ui->search_bar, &QLineEdit::returnPressed, this, [this]() {
     if (ui->next_scan->isEnabled())

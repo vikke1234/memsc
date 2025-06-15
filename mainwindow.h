@@ -46,7 +46,8 @@ public slots:
     void handle_double_click_saved(int row, int column);
     void delete_window();
     void saved_address_change(address_t *segment, int row);
-
+    void load_settings();
+    void attach_to_process(pid_t pid, const QString name);
 private:
     enum saved_address_cells {
         SAVED_ADDRESS_CHECKBOX = 0,

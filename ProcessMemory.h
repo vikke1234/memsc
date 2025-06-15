@@ -2,12 +2,14 @@
 #include "maps.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <immintrin.h>
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
 #include <prfchiintrin.h>
 #include <sys/mman.h>
+#include <type_traits>
 #include <variant>
 #include <memory>
 #include <unistd.h>
@@ -18,6 +20,7 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
+#include <iostream>
 
 
 using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std::uint64_t *>;
@@ -27,10 +30,12 @@ using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std
  * it which would be nice so you don't have a global variable
  */
 class ProcessMemory {
-    pid_t _pid{};
+    std::size_t max_read_size_ = 0x10000000;
     std::vector<void *> matches{};
-    std::atomic<bool> scanning_{};
     std::function<void(size_t, size_t)> progressCallback_{};
+    std::atomic<bool> scanning_{};
+
+    pid_t _pid{-1};
 
 public:
     ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
@@ -52,8 +57,23 @@ public:
         progressCallback_ = cb;
     }
 
-    void pid(const pid_t p) {
+    void max_read_size(std::size_t size) {
+        // TODO: fix race condition
+        max_read_size_ = size;
+    }
+
+    std::size_t max_read_size() const {
+        return max_read_size_;
+    }
+
+    bool pid(const pid_t p) {
+        if (!std::filesystem::exists("/proc/" + std::to_string(p))) {
+            std::cout << "Could not attach to: " << p << "\n";
+            return false;
+        }
+
         _pid = p;
+        return true;
     }
 
     pid_t pid() const {
@@ -69,8 +89,7 @@ public:
     template<typename T>
     void scan_range(std::vector<void *>& found, const address_range &range, const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
-        constexpr std::size_t max_size = 0x10000000;
-        constexpr std::size_t count = max_size / sizeof(T);
+        const std::size_t count = max_read_size_ / sizeof(T);
 
         size_t bufsize = std::min(range.length / sizeof(T), count);
         alignas(64) std::unique_ptr<T[]> buf = std::make_unique<T[]>(bufsize);
@@ -81,9 +100,9 @@ public:
 
         for (char *start = reinterpret_cast<char *>(range.start);
              start < end;
-             start += max_size) {
+             start += max_read_size_) {
             std::uintptr_t ptrdiff = end - start;
-            ssize_t size = std::min(max_size, ptrdiff);
+            ssize_t size = std::min(max_read_size_, ptrdiff);
 
             ssize_t nread = read_process_memory_nosplit(_pid, start, buf.get(), size);
             if (nread < 0 || nread != size) {
@@ -184,12 +203,12 @@ private:
         // Expect ~33% hit-rate
         size_t i = 0;
 
-        if constexpr (__AVX2__) {
+#ifdef __AVX2__
+        if constexpr (!std::is_floating_point_v<T>) {
             constexpr size_t lanes = 8;
             size_t aligned_end = (count / lanes) * lanes; // 8 lanes of int32_t
             const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
 
-            // In order to avoid modulo
             for (; i < aligned_end; i += lanes) {
                 if (i % (4096 / sizeof(T)) == 0) {
                     _mm_prefetch(&buf[i + (4096 / sizeof(T))], _MM_HINT_T0);
@@ -207,6 +226,7 @@ private:
 
             i = aligned_end;
         }
+#endif // __AVX2__
 
         // "Default implementation" as well as cleanup for AVX implementation.
         for (; i < count; i++) {
