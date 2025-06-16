@@ -41,7 +41,7 @@ jobs:
         with:
           name: memsc-artifacts
           path: |
-            build/memsc
+            build/src/memsc
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
