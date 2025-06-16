@@ -2,7 +2,10 @@
 
 ## Build instructions
 
-`cmake -B build && cmake --build build -j`
+`cmake -B build -DCMAKE_INSTALL_PREFIX=<prefix> && cmake --build build -j`
+
+## Installing
+`cmake --install build`
 
 ## To run
 

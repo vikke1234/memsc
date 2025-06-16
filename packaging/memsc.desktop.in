@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=@PROJECT_NAME@
+Comment=@PROJECT_DESCRIPTION@
+Exec=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_BINDIR@/memsc
+Icon=@PROJECT_NAME@-icon.png
+Terminal=false
+Categories=Utility;Development;

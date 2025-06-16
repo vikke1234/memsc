@@ -32,4 +32,3 @@ target_link_options(memsc PRIVATE
 target_link_libraries(memsc PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui
                                     Threads::Threads)
 
-install(TARGETS memsc RUNTIME DESTINATION bin)
