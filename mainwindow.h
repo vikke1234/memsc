@@ -64,6 +64,7 @@ private:
 	MapsDialog  *mapsDialog{};
     QRegularExpressionValidator *pos_only;
     QRegularExpressionValidator *pos_neg;
+    QRegularExpressionValidator *floating_point;
 
     bool quit = false;
     std::unordered_map<void *, address_t*> saved_address_values;

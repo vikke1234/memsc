@@ -144,7 +144,9 @@ MainWindow::MainWindow(QWidget *parent)
       value_update_timer(new QTimer(this)),
       pos_only{new QRegularExpressionValidator(QRegularExpression("\\d*"), this)},
       pos_neg{new QRegularExpressionValidator(QRegularExpression("[+-]?\\d*"),
-                                              this)} {
+                                              this)},
+    floating_point(new QRegularExpressionValidator(QRegularExpression("\\d+([,.]+\\d*)?"), this))
+{
     ui->setupUi(this);
 
     ui->progressBar->setRange(0, 100);
@@ -200,6 +202,7 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 void MainWindow::load_settings() {
+    // TODO: integrate failures
     QSettings settings{"Memory Scanner", "Memsc"};
     bool ok = false;
     qDebug() << "Updating settings\n";
@@ -208,6 +211,8 @@ void MainWindow::load_settings() {
     std::size_t size =
         settings.value("General/scan-block-size").toULongLong(&ok);
     scanner.max_read_size(size);
+    double epsilon = settings.value("General/epsilon").toDouble(&ok);
+    scanner.epsilon(epsilon);
 
     pid_t pid = pid_t{settings.value("General/auto-attach", -1).toInt(&ok)};
     if (scanner.pid() < 0 && ok && pid >= 0) {
@@ -231,7 +236,6 @@ void MainWindow::attach_to_process(pid_t pid, const QString name) {
     setWindowTitle(QString("MemSC - ") + name);
     toggleLayoutItems(ui->memorySearchLayout, true);
     ui->next_scan->setEnabled(false);
-    ui->value_type->setEnabled(false);
     ui->search_bar->setFocus();
     ui->memory_addresses->clearContents();
     ui->saved_addresses->clearContents();
@@ -363,7 +367,7 @@ void MainWindow::save_row(int row, int column) {
     /*description inserted automatically; when saving is added will probably be included here as well or something */
     ui->saved_addresses->setItem(current_rows, 2, address); /* address */
     QComboBox *type_combobox = new QComboBox(this);
-    type_combobox->addItems({"Binary", "Byte", "2 Bytes", "4 Bytes", "8 Bytes", "Float", "Double", "String", "Array of Bytes"});
+    type_combobox->addItems({"Byte", "2 Bytes", "4 Bytes", "8 Bytes", "Float", "Double", "String", "Array of Bytes"});
     type_combobox->setCurrentIndex(type);
     ui->saved_addresses->setCellWidget(current_rows, 3, type_combobox);
     QTableWidgetItem *value_cell = new QTableWidgetItem(value);
@@ -397,9 +401,13 @@ void MainWindow::save_row(int row, int column) {
 void MainWindow::change_validator(int index) {
 
     switch (index) {
-        case 0: /* Int */
+        /* Int */
+        case 0 ... 3:
             ui->search_bar->setValidator(pos_only);
             break;
+        case 4:
+        case 5:
+            ui->search_bar->setValidator(floating_point);
         default:
             ui->search_bar->setValidator(nullptr);
     }
@@ -411,7 +419,7 @@ void MainWindow::handle_new_scan() {
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
         ui->next_scan->setEnabled(false);
-        //ui->value_type->setEnabled(true);
+        ui->value_type->setEnabled(true);
     } else {
         if(ui->search_bar->text().isEmpty() || scanner.scanning()) {
             return;
@@ -429,7 +437,7 @@ void MainWindow::handle_next_scan() {
     int idx = ui->value_type->currentIndex();
     const QString searchText = ui->search_bar->text();
     switch (idx) {
-        case 1: { // Byte -> uint8_t
+        case 0: { // Byte -> uint8_t
             bool ok = false;
             uint8_t v = static_cast<uint8_t>(searchText.toUInt(&ok));
             if (!ok) return;
@@ -439,7 +447,7 @@ void MainWindow::handle_next_scan() {
                                              );
             break;
         }
-        case 2: { // 2 Bytes -> uint16_t
+        case 1: { // 2 Bytes -> uint16_t
             bool ok = false;
             uint16_t v = static_cast<uint16_t>(searchText.toUInt(&ok));
             if (!ok) return;
@@ -448,7 +456,7 @@ void MainWindow::handle_next_scan() {
                                               ui->amount_found, ui->next_scan, v);
             break;
         }
-        case 3: { // 4 Bytes -> uint32_t
+        case 2: { // 4 Bytes -> uint32_t
             bool ok = false;
             uint32_t v = searchText.toUInt(&ok);
             if (!ok) return;
@@ -457,7 +465,7 @@ void MainWindow::handle_next_scan() {
                                               ui->amount_found, ui->next_scan, v);
             break;
         }
-        case 4: { // 8 Bytes -> uint64_t
+        case 3: { // 8 Bytes -> uint64_t
             bool ok = false;
             uint64_t v = searchText.toULongLong(&ok);
             if (!ok) return;
@@ -466,10 +474,24 @@ void MainWindow::handle_next_scan() {
                                               ui->amount_found, ui->next_scan, v);
             break;
         }
-        case 5: { // Float
+
+        case 4: { // Float
+            bool ok = false;
+            float v = searchText.toFloat(&ok);
+            if (!ok) return;
+            start_scan_and_populate<float>(this, &scanner,
+                                              ui->memory_addresses, searchText,
+                                              ui->amount_found, ui->next_scan, v);
             break;
         }
-        case 6: { // Double
+
+        case 5: { // Double
+            bool ok = false;
+            double v = searchText.toDouble(&ok);
+            if (!ok) return;
+            start_scan_and_populate<double>(this, &scanner,
+                                              ui->memory_addresses, searchText,
+                                              ui->amount_found, ui->next_scan, v);
             break;
         }
         default:

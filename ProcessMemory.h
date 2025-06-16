@@ -23,7 +23,7 @@
 #include <iostream>
 
 
-using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std::uint64_t *>;
+using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std::uint64_t *, float *, double *>;
 
 /*
  * maybe make this into a class? you could place the pid into
@@ -31,14 +31,16 @@ using Match = std::variant<std::uint8_t *, std::uint16_t *, std::uint32_t *, std
  */
 class ProcessMemory {
     std::size_t max_read_size_ = 0x10000000;
+    double epsilon_ = 0.000000001;
     std::vector<void *> matches{};
     std::function<void(size_t, size_t)> progressCallback_{};
     std::atomic<bool> scanning_{};
 
-    pid_t _pid{-1};
+    pid_t pid_{-1};
 
 public:
-    ssize_t write_process_memory(void *address, void *buffer, const ssize_t n) const;
+    ssize_t write_process_memory(void *address, void *buffer,
+                                 const ssize_t n) const;
 
     static void prefetch_area(pid_t pid, void *address, size_t size);
     ssize_t read_process_memory(void *address, void *buffer, size_t n) const;
@@ -66,18 +68,22 @@ public:
         return max_read_size_;
     }
 
+    void epsilon(double e) {
+        epsilon_ = e;
+    }
+
     bool pid(const pid_t p) {
         if (!std::filesystem::exists("/proc/" + std::to_string(p))) {
             std::cout << "Could not attach to: " << p << "\n";
             return false;
         }
 
-        _pid = p;
+        pid_ = p;
         return true;
     }
 
     pid_t pid() const {
-        return _pid;
+        return pid_;
     }
 
     /**
@@ -87,14 +93,15 @@ public:
      * @return
      */
     template<typename T>
-    void scan_range(std::vector<void *>& found, const address_range &range, const T value) {
+    void scan_range(std::vector<void *>& found, const address_range &range,
+                    const T value) {
         // We're largely dependent on how large the page size is on how much we can actually read.
         const std::size_t count = max_read_size_ / sizeof(T);
 
         size_t bufsize = std::min(range.length / sizeof(T), count);
         alignas(64) std::unique_ptr<T[]> buf = std::make_unique<T[]>(bufsize);
         if (range.length > 4096) {
-            prefetch_area(_pid, range.start, range.length);
+            prefetch_area(pid_, range.start, range.length);
         }
         char *end = static_cast<char *>(range.start) + range.length;
 
@@ -104,7 +111,7 @@ public:
             std::uintptr_t ptrdiff = end - start;
             ssize_t size = std::min(max_read_size_, ptrdiff);
 
-            ssize_t nread = read_process_memory_nosplit(_pid, start, buf.get(), size);
+            ssize_t nread = read_process_memory_nosplit(pid_, start, buf.get(), size);
             if (nread < 0 || nread != size) {
                 std::fprintf(
                     stderr,
@@ -127,6 +134,7 @@ public:
     void scan(T value) {
         scanning_ = true;
         using Clock = std::chrono::high_resolution_clock;
+        std::cout << "epsilon: " << epsilon_ << "\n";
 
         auto overall_t0 = Clock::now();
 
@@ -155,7 +163,7 @@ private:
             }
             T new_value{};
             [[maybe_unused]] ssize_t n =
-                read_process_memory_nosplit(_pid, addr, &new_value,
+                read_process_memory_nosplit(pid_, addr, &new_value,
                                             sizeof(new_value));
             assert(n == sizeof(T));
             if (new_value != value) {
@@ -169,12 +177,12 @@ private:
 
     template<typename T>
     std::vector<void *> initial_scan(T value) {
-        std::vector<address_range> list = get_memory_ranges(_pid, false);
+        std::vector<address_range> list = get_memory_ranges(pid_, false);
         std::vector<void *> found;
         size_t total_size = get_address_range_list_size(list, false);
         size_t scanned_size = 0;
         for (address_range &current : list) {
-            if (!(current.perms & PERM_EXECUTE) && current.perms & PERM_READ) {
+            if (current.perms & PERM_READ) {
                 scan_range<T>(found, current, value);
 
                 scanned_size += current.length;
@@ -199,12 +207,12 @@ private:
      * @return vector containing addresses that match the value
      */
     template<typename T>
-    void filter_results(std::vector<void*> &found, T value, char *start, T *buf, size_t count) {
-        // Expect ~33% hit-rate
+    void filter_results(std::vector<void*> &found, T value,
+                        char *start, T *buf, size_t count) {
         size_t i = 0;
 
 #ifdef __AVX2__
-        if constexpr (!std::is_floating_point_v<T>) {
+        if constexpr (!std::is_floating_point_v<T> && sizeof(T) == 4) {
             constexpr size_t lanes = 8;
             size_t aligned_end = (count / lanes) * lanes; // 8 lanes of int32_t
             const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
@@ -219,7 +227,8 @@ private:
                 char* base = start + i * sizeof(T);
                 while (mask) {
                     unsigned int lane = __builtin_ctz(mask); // [0..7]
-                    found.push_back(reinterpret_cast<T *>(base + lane * sizeof(T)));
+                    found.push_back(
+                        reinterpret_cast<T *>(base + lane * sizeof(T)));
                     mask &= (mask - 1);
                 }
             }
@@ -228,10 +237,22 @@ private:
         }
 #endif // __AVX2__
 
-        // "Default implementation" as well as cleanup for AVX implementation.
+        // "Default implementation" as well as cleanup for AVX implementation
         for (; i < count; i++) {
-            if (buf[i] == value) {
-                found.push_back(reinterpret_cast<T *>(start + i * sizeof(T)));
+            if constexpr (std::is_floating_point_v<T>) {
+                double val = std::abs(buf[i] - value);
+                if ((start + i * sizeof(T)) == (char*)0x7ffd3a28cdf0) {
+                    std::cout << "val: " << val << " buf[i] " << buf[i]<< "\n";
+                }
+                if (val < epsilon_) {
+                    found.push_back(
+                        reinterpret_cast<T *>(start + i * sizeof(T)));
+                }
+            } else {
+                if (buf[i] == value) {
+                    found.push_back(
+                        reinterpret_cast<T *>(start + i * sizeof(T)));
+                }
             }
         }
     }

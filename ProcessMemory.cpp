@@ -59,7 +59,7 @@ ssize_t ProcessMemory::read_process_memory(void *address, void *buffer, size_t n
     }
 
     iovec local { .iov_base = buffer, .iov_len = n };
-    ssize_t amount_read = process_vm_readv(_pid, &local, 1,
+    ssize_t amount_read = process_vm_readv(pid_, &local, 1,
         remote.get(), num_vecs, 0);
 
     if (amount_read == -1) {
@@ -89,6 +89,6 @@ ssize_t ProcessMemory::write_process_memory(void *address, void *buffer, const s
     remote.iov_len = n;
     local.iov_base = buffer;
     local.iov_len = n;
-    ssize_t amount_read = process_vm_writev(_pid, &local, 1, &remote, 1, 0);
+    ssize_t amount_read = process_vm_writev(pid_, &local, 1, &remote, 1, 0);
     return amount_read;
 }

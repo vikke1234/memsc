@@ -28,6 +28,7 @@ private:
     QSpinBox  *updateIntervalSpin;     // "update-interval"
     QSpinBox  *autoAttachPid;       // "auto-attach"
     QLineEdit *scanBlockSizeEdit;     // "scan-block-size"
+    QLineEdit *epsilonLineEdit;
 
     QFormLayout *formLayout;
     QDialogButtonBox *buttonBox;
