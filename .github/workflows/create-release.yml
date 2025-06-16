@@ -15,6 +15,8 @@ jobs:
   build:
     if: github.event_name != 'push' || (!startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
+    outputs:
+      built: ${{ steps.check_output.outcome }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,39 +29,38 @@ jobs:
           cache: true
 
       - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
       - name: Build
-        run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
 
       - name: Test
-        working-directory: ${{ github.workspace }}/build
+        working-directory: build
         run: ctest -C ${{ env.BUILD_TYPE }}
 
+      - name: Upload build artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: memsc-artifacts
+          path: |
+            build/memsc
   release:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Qt via install-qt-action
-        uses: jurplel/install-qt-action@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
         with:
-          version: '6.9'
-          host: linux
-          target: desktop
-          cache: true
-
-      - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-      - name: Build
-        run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
+          name: memsc-artifacts
 
       - name: Package artifacts
         run: |
           mkdir -p release
-          cp ${{ github.workspace }}/build/memsc release/ || echo "Warning: memsc not found"
+          cp memsc release/ || echo "Warning: memsc not found"
           tar czf memsc-${{ github.ref_name }}.tar.gz release
 
       - name: Create GitHub Release
@@ -74,11 +75,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: memsc-${{ github.ref_name }}.tar.gz
-          asset_name: memsc-${{ github.ref_name }}.tar.gz
-          asset_content_type: application/gzip
+          files: memsc-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
