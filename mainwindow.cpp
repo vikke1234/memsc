@@ -253,6 +253,7 @@ void MainWindow::show_pid_window() {
 MainWindow::~MainWindow() {
     this->quit = true;
     delete ui;
+    delete scanner;
 }
 
 void MainWindow::createMapsDialog(pid_t pid) {
