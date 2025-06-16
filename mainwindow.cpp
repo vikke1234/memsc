@@ -145,12 +145,13 @@ MainWindow::MainWindow(QWidget *parent)
       pos_only{new QRegularExpressionValidator(QRegularExpression("\\d*"), this)},
       pos_neg{new QRegularExpressionValidator(QRegularExpression("[+-]?\\d*"),
                                               this)},
-    floating_point(new QRegularExpressionValidator(QRegularExpression("\\d+([,.]+\\d*)?"), this))
+    floating_point(new QRegularExpressionValidator(QRegularExpression("\\d+([,.]+\\d*)?"), this)),
+    scanner(new ProcessMemory())
 {
     ui->setupUi(this);
 
     ui->progressBar->setRange(0, 100);
-    scanner.setProgressCallback(
+    scanner->setProgressCallback(
     [this] (size_t current, size_t total) {
         QMetaObject::invokeMethod(ui->progressBar, [this, current, total]() {
             ui->progressBar->setValue((int) ((double) current / total * 100));
@@ -210,12 +211,12 @@ void MainWindow::load_settings() {
         settings.value("General/update-interval", 100).toInt());
     std::size_t size =
         settings.value("General/scan-block-size").toULongLong(&ok);
-    scanner.max_read_size(size);
+    scanner->max_read_size(size);
     double epsilon = settings.value("General/epsilon").toDouble(&ok);
-    scanner.epsilon(epsilon);
+    scanner->epsilon(epsilon);
 
     pid_t pid = pid_t{settings.value("General/auto-attach", -1).toInt(&ok)};
-    if (scanner.pid() < 0 && ok && pid >= 0) {
+    if (scanner->pid() < 0 && ok && pid >= 0) {
         QString commPath = QString("/proc/%1/comm").arg(pid);
         QFile commFile(commPath);
         QString procName = tr("<unknown>");
@@ -229,7 +230,7 @@ void MainWindow::load_settings() {
 }
 
 void MainWindow::attach_to_process(pid_t pid, const QString name) {
-    if (!scanner.pid(pid)) {
+    if (!scanner->pid(pid)) {
         return;
     }
     qDebug() << "Attaching to: " << pid << "\n";
@@ -239,7 +240,7 @@ void MainWindow::attach_to_process(pid_t pid, const QString name) {
     ui->search_bar->setFocus();
     ui->memory_addresses->clearContents();
     ui->saved_addresses->clearContents();
-    scanner.get_matches().clear();
+    scanner->get_matches().clear();
 }
 
 void MainWindow::show_pid_window() {
@@ -267,7 +268,7 @@ void MainWindow::createMapsDialog(pid_t pid) {
 }
 
 void MainWindow::locate_in_maps(uintptr_t ptr) {
-	createMapsDialog(scanner.pid());
+	createMapsDialog(scanner->pid());
     mapsDialog->gotoAddress(reinterpret_cast<uintptr_t>(ptr));
 }
 
@@ -278,7 +279,7 @@ void MainWindow::create_menu() {
     QAction *maps = new QAction("Maps", tools);
     maps->setShortcut(QKeySequence(Qt::Key_F12));
     connect(maps, &QAction::triggered, [this]() {
-        pid_t pid = scanner.pid();
+        pid_t pid = scanner->pid();
         if (pid == 0) {
             QMessageBox::warning(
                 this,
@@ -415,13 +416,13 @@ void MainWindow::change_validator(int index) {
 
 void MainWindow::handle_new_scan() {
     if(ui->next_scan->isEnabled()) {
-        scanner.get_matches().clear();
+        scanner->get_matches().clear();
         ui->memory_addresses->clearContents();
         ui->amount_found->setText("Found: 0");
         ui->next_scan->setEnabled(false);
         ui->value_type->setEnabled(true);
     } else {
-        if(ui->search_bar->text().isEmpty() || scanner.scanning()) {
+        if(ui->search_bar->text().isEmpty() || scanner->scanning()) {
             return;
         }
         ui->value_type->setEnabled(false);
@@ -441,7 +442,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             uint8_t v = static_cast<uint8_t>(searchText.toUInt(&ok));
             if (!ok) return;
-            start_scan_and_populate<uint8_t>(this, &scanner,
+            start_scan_and_populate<uint8_t>(this, scanner,
                                              ui->memory_addresses, searchText,
                                              ui->amount_found, ui->next_scan, v
                                              );
@@ -451,7 +452,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             uint16_t v = static_cast<uint16_t>(searchText.toUInt(&ok));
             if (!ok) return;
-            start_scan_and_populate<uint16_t>(this, &scanner,
+            start_scan_and_populate<uint16_t>(this, scanner,
                                               ui->memory_addresses, searchText,
                                               ui->amount_found, ui->next_scan, v);
             break;
@@ -460,7 +461,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             uint32_t v = searchText.toUInt(&ok);
             if (!ok) return;
-            start_scan_and_populate<uint32_t>(this, &scanner,
+            start_scan_and_populate<uint32_t>(this, scanner,
                                               ui->memory_addresses, searchText,
                                               ui->amount_found, ui->next_scan, v);
             break;
@@ -469,7 +470,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             uint64_t v = searchText.toULongLong(&ok);
             if (!ok) return;
-            start_scan_and_populate<uint64_t>(this, &scanner,
+            start_scan_and_populate<uint64_t>(this, scanner,
                                               ui->memory_addresses, searchText,
                                               ui->amount_found, ui->next_scan, v);
             break;
@@ -479,7 +480,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             float v = searchText.toFloat(&ok);
             if (!ok) return;
-            start_scan_and_populate<float>(this, &scanner,
+            start_scan_and_populate<float>(this, scanner,
                                               ui->memory_addresses, searchText,
                                               ui->amount_found, ui->next_scan, v);
             break;
@@ -489,7 +490,7 @@ void MainWindow::handle_next_scan() {
             bool ok = false;
             double v = searchText.toDouble(&ok);
             if (!ok) return;
-            start_scan_and_populate<double>(this, &scanner,
+            start_scan_and_populate<double>(this, scanner,
                                               ui->memory_addresses, searchText,
                                               ui->amount_found, ui->next_scan, v);
             break;
@@ -516,7 +517,7 @@ void MainWindow::handle_double_click_saved(int row,int column) {
         QString str_addr = ui->saved_addresses->item(row, 2)->text();
         void *address = nullptr;
         sscanf(str_addr.toStdString().c_str(), "%p", &address);
-        // TODO: scanner.write(address, &value, sizeof(value));
+        // TODO: scanner->write(address, &value, sizeof(value));
         break;
     }
 }
@@ -548,7 +549,7 @@ void MainWindow::update_table(QTableWidget *widget, int addr_col, int value_col)
                 if (!ptr) return;
 
                 U newVal{};
-                [[maybe_unused]] ssize_t n = scanner.read_process_memory(ptr, &newVal, sizeof(newVal));
+                [[maybe_unused]] ssize_t n = scanner->read_process_memory(ptr, &newVal, sizeof(newVal));
                 assert(n == sizeof(newVal));
 
                 current_value->setText(QString::number(newVal));

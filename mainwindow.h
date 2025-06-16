@@ -1,8 +1,6 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include "ProcessMemory.h"
-
 #include <QMainWindow>
 #include <QTableWidget>
 
@@ -23,6 +21,7 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
+class ProcessMemory;
 class QRegularExpressionValidator;
 class MapsDialog;
 class QMenuBar;
@@ -69,7 +68,7 @@ private:
     bool quit = false;
     std::unordered_map<void *, address_t*> saved_address_values;
     std::thread saved_address_scanner;
-    ProcessMemory scanner;
+    ProcessMemory *scanner;
 
     void create_menu();
     void create_connections();
