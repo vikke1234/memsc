@@ -7,7 +7,7 @@
 #include <QTableWidgetItem>
 #include <variant>
 
-#include "../ProcessMemory.h"
+#include "ProcessMemory.h"
 
 
 class MatchTableItem : public QTableWidgetItem
