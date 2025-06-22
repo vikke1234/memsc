@@ -20,6 +20,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 COMPONENTS Widgets REQUIRED)
 find_package(Threads REQUIRED)
+find_package(OpenMP REQUIRED)
+
 add_subdirectory(src)
 configure_file(
     packaging/memsc.desktop.in

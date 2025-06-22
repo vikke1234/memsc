@@ -199,14 +199,22 @@ private:
         std::vector<address_range> list = get_memory_ranges(pid_, false);
         std::vector<void *> found;
         size_t total_size = get_address_range_list_size(list, false);
-        size_t scanned_size = 0;
-        for (address_range &current : list) {
-            if (current.perms & PERM_READ) {
-                scan_range<T>(found, current, value);
+        std::atomic<size_t> scanned_size = 0;
+        #pragma omp parallel
+        {
+            std::vector<void *> local;
+            #pragma omp for schedule(dynamic, 5)
+            for (auto it = list.begin(); it < list.end(); ++it) {
+                auto& current = *it;
+                if (current.perms & PERM_READ) {
+                    scan_range<T>(local, current, value);
 
-                scanned_size += current.length;
-                progressCallback_(scanned_size, total_size);
+                    scanned_size.fetch_add(current.length);
+                    progressCallback_(scanned_size.load(), total_size);
+                }
             }
+            #pragma omp critical
+            found.insert(found.end(), local.begin(), local.end());
         }
         printf("Scanned %'lu bytes (%.02f GB)\n", total_size, double(total_size) / 1e9);
         return found;
@@ -236,7 +244,7 @@ private:
             size_t aligned_end = (count / lanes) * lanes; // 8 lanes of int32_t
             const __m256i val_vec = _mm256_set1_epi32(static_cast<int32_t>(value));
 
-            for (; i < aligned_end; i += lanes) {
+            for (i = 0; i < aligned_end; i += lanes) {
                 if (i % (4096 / sizeof(T)) == 0) {
                     _mm_prefetch(&buf[i + (4096 / sizeof(T))], _MM_HINT_NTA);
                 }
@@ -246,9 +254,9 @@ private:
                 char* base = start + i * sizeof(T);
                 while (mask) {
                     unsigned int lane = __builtin_ctz(mask); // [0..7]
+                    mask &= (mask - 1);
                     found.push_back(
                         reinterpret_cast<T *>(base + lane * sizeof(T)));
-                    mask &= (mask - 1);
                 }
             }
 
@@ -260,9 +268,6 @@ private:
         for (; i < count; i++) {
             if constexpr (std::is_floating_point_v<T>) {
                 double val = std::abs(buf[i] - value);
-                if ((start + i * sizeof(T)) == (char*)0x7ffd3a28cdf0) {
-                    std::cout << "val: " << val << " buf[i] " << buf[i]<< "\n";
-                }
                 if (val < epsilon_) {
                     found.push_back(
                         reinterpret_cast<T *>(start + i * sizeof(T)));
