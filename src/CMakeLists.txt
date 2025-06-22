@@ -8,7 +8,9 @@ add_executable(memsc
         ui/MapsDialog.cpp
         ui/PidDialog.cpp
         ui/Settings.cpp
+        perf.cpp
 )
+
 
 target_precompile_headers(memsc PRIVATE
         ui/MapsDialog.h

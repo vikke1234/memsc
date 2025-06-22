@@ -1,5 +1,6 @@
 #pragma once
 #include "maps.h"
+#include "perf.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -7,7 +8,6 @@
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
-#include <prfchiintrin.h>
 #include <sys/mman.h>
 #include <type_traits>
 #include <variant>
@@ -135,6 +135,20 @@ public:
         scanning_ = true;
         using Clock = std::chrono::high_resolution_clock;
         std::cout << "epsilon: " << epsilon_ << "\n";
+        perf_event_attr  pe {
+            .type = PERF_TYPE_HARDWARE,
+            .size = sizeof(perf_event_attr),
+            .config = PERF_COUNT_HW_INSTRUCTIONS,
+            .disabled = 1,
+            .exclude_kernel = 1,
+            .exclude_hv = 1
+        };
+        int fd = perf_event_open(&pe, 0, -1, -1, 0);
+        if (fd == -1) {
+            std::cout << "Error could not open perf event";
+        }
+        ioctl(fd, PERF_EVENT_IOC_RESET, 0);
+        ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
 
         auto overall_t0 = Clock::now();
 
@@ -144,10 +158,15 @@ public:
             scan_found<T>(value);
         }
 
+        ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+        long long cycles{};
+
+        read(fd, &cycles, sizeof(long long));
         auto overall_t1 = Clock::now();
         std::chrono::duration<double> total_elapsed = overall_t1 - overall_t0;
         double total_seconds = total_elapsed.count();
         fprintf(stdout, "Total scan time: %.3f s\n", total_seconds);
+        fprintf(stdout, "Total cycles spent %lld\n", cycles);
         fprintf(stdout, "matches: %lu\n", matches.size());
         scanning_ = false;
     }
@@ -219,7 +238,7 @@ private:
 
             for (; i < aligned_end; i += lanes) {
                 if (i % (4096 / sizeof(T)) == 0) {
-                    _mm_prefetch(&buf[i + (4096 / sizeof(T))], _MM_HINT_T0);
+                    _mm_prefetch(&buf[i + (4096 / sizeof(T))], _MM_HINT_NTA);
                 }
                 __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(&buf[i]));
                 __m256i cmp = _mm256_cmpeq_epi32(chunk, val_vec);
