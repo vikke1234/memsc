@@ -143,7 +143,7 @@ public:
             .exclude_kernel = 1,
             .exclude_hv = 1
         };
-        int fd = perf_event_open(&pe, 0, -1, -1, 0);
+        int fd = (int)perf_event_open(&pe, 0, -1l, -1l, 0);
         if (fd == -1) {
             std::cout << "Error could not open perf event";
         }
