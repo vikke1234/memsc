@@ -8,6 +8,7 @@ add_executable(memsc
         ui/MapsDialog.cpp
         ui/PidDialog.cpp
         ui/Settings.cpp
+        ui/Disassembly.cpp
         perf.cpp
 )
 
@@ -32,5 +33,5 @@ target_link_options(memsc PRIVATE
 )
 
 target_link_libraries(memsc PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui
-                                    Threads::Threads OpenMP::OpenMP_CXX)
+                                    Threads::Threads OpenMP::OpenMP_CXX capstone)
 

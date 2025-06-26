@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ProcessMemory.h"
+#include "ui/Disassembly.h"
 #include "ui/MapsDialog.h"
 #include "ui/PidDialog.h"
 #include "ui/MatchTableItem.h"
@@ -195,7 +196,6 @@ MainWindow::MainWindow(QWidget *parent)
     toggleLayoutItems(ui->memorySearchLayout, false);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     ui->memory_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    ui->saved_addresses->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
 
     load_settings();
 
@@ -281,7 +281,7 @@ void MainWindow::create_menu() {
     maps->setShortcut(QKeySequence(Qt::Key_F12));
     connect(maps, &QAction::triggered, [this]() {
         pid_t pid = scanner->pid();
-        if (pid == 0) {
+        if (pid <= 0) {
             QMessageBox::warning(
                 this,
                 tr("Invalid PID"),
@@ -293,6 +293,23 @@ void MainWindow::create_menu() {
 		createMapsDialog(pid);
     });
 
+    QAction *disasm = new QAction("Disassembler", tools);
+    disasm->setShortcut(QKeySequence(Qt::Key_F11));
+    connect(disasm, &QAction::triggered, [this] {
+        pid_t pid = scanner->pid();
+
+        if (pid <= 0) {
+            QMessageBox::warning(
+                this,
+                tr("Invalid PID"),
+                tr("Please attach to a process")
+            );
+            return;
+        }
+        Disassembly *window = new Disassembly(pid);
+        window->show();
+    });
+
     QAction *settings = new QAction("Settings", filemenu);
     connect(settings, &QAction::triggered, [this] {
         SettingsDialog *diag = new SettingsDialog(this);
@@ -300,6 +317,7 @@ void MainWindow::create_menu() {
         diag->exec();
     });
     filemenu->addAction(settings);
+    tools->addAction(disasm);
     tools->addAction(maps);
     menubar->addMenu(filemenu);
     menubar->addMenu(tools);
